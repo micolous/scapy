@@ -692,7 +692,7 @@ class EIR_Element(Packet):
     @staticmethod
     def length_from(pkt):
         if not pkt.underlayer:
-            warning("Missing an upper-layer")
+            warning("Missing an under-layer")
             return 0
         # 'type' byte is included in the length, so subtract 1:
         return pkt.underlayer.len - 1

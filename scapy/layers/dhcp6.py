@@ -11,6 +11,7 @@ DHCPv6: Dynamic Host Configuration Protocol for IPv6. [RFC 3315]
 """
 
 from __future__ import print_function
+import calendar
 import socket
 import struct
 import time
@@ -1510,7 +1511,7 @@ DHCPv6_am.parse_options( dns="2001:500::1035", domain="localdomain, local",
         else:
             # Timeval
             epoch = (2000, 1, 1, 0, 0, 0, 5, 1, 0)
-            delta = time.mktime(epoch) - EPOCH
+            delta = calendar.timegm(epoch) - EPOCH
             timeval = time.time() - delta
 
             # Mac Address

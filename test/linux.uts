@@ -376,3 +376,26 @@ t_sniffer.join(1)
 assert(dot1q_count == 2)
 
 veth.destroy()
+
+= Test get_temp_fifo
+~ linux
+
+import stat
+fname = get_temp_fifo()
+s = os.stat(fname)
+assert stat.S_ISFIFO(s.st_mode)
+
+= Test L2socket failure mode
+~ linux
+
+import mock
+
+with mock.patch('socket.socket', side_effect=socket.error('nope')):
+    d = None
+    try:
+        d = scapy.arch.linux.L2Socket()
+    except socket.error:
+        pass
+    else:
+        # We expected an exception to be thrown
+        assert False
