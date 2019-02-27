@@ -19,6 +19,7 @@ from scapy.layers.eap import EAP
 from scapy.layers.l2 import Ether, CookedLinux, GRE_PPTP
 from scapy.layers.inet import IP
 from scapy.layers.inet6 import IPv6
+from scapy.layers.slip import SLIPPacketizer, SLIPSocket
 from scapy.fields import BitField, ByteEnumField, ByteField, \
     ConditionalField, FieldLenField, IntField, IPField, \
     PacketListField, PacketField, ShortEnumField, ShortField, \
@@ -873,6 +874,57 @@ class PPP_CHAP_ChallengeResponse(PPP_CHAP):
             )
         else:
             return super(PPP_CHAP_ChallengeResponse, self).mysummary()
+
+
+class PPPPacketizer(SLIPPacketizer):
+    def __init__(self, discard_empty=True):
+        SLIPPacketizer.__init__(
+            self,
+            esc=b'\x7d',
+            esc_esc=b'\x5d',
+            end=b'\x7e',
+            end_esc=b'\x5e',
+            discard_empty=discard_empty,
+        )
+
+    def handle_escape(self, i, end_msg_pos):
+        # RFC 1662 section 4.2 (Transparency)
+        b = self.buffer[i]
+        return (i + 1), (b ^ 0x20)
+
+    def encode_data(self, pkt):
+        """
+        Encodes a packet in binary form with PPP.
+
+        This does NOT use the buffer lock.
+        """
+        d = raw(pkt)
+        o = bytearray()
+        o.extend(self.end)
+        for c in d:
+            # TODO: Handle Async-Control-Character-Map
+            if c < 0x20 or c in self.end or c in self.esc:
+                o.extend(self.esc)
+                o.append(c ^ 0x20)
+        return bytes(o)
+
+
+class PPPSocket(SLIPSocket):
+    """
+    Implements serial connectivity with PPP.
+
+    """
+
+    desc = "communicate with PPP"
+
+    def __init__(self, fd):
+        SLIPSocket.__init__(
+            self,
+            fd=fd,
+            packetizer=PPPPacketizer(),
+            cls=HDLC,
+        )
+
 
 
 bind_layers(PPPoED, PPPoED_Tags, type=1)

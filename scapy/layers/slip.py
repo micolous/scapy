@@ -46,11 +46,11 @@ class SLIPPacketizer(object):
     By default, this class operates according to RFC 1055.
 
     Args:
-        esc (bytes): The sequence that preceeds all escape sequences.
+        esc (bytes): The sequence that precedes all escape sequences.
         esc_esc (bytes): The sequence for including a literal ``esc``.
         end (bytes): The sequence that terminates each packet.
         end_esc (bytes): The sequence for including a literal ``end``.
-        start (bytes, optional): The sequence that preceeds each packet.
+        start (bytes, optional): The sequence that precedes each packet.
         start_esc (bytes, optional): The sequence for including a literal
                                      ``start``.
         discard_empty (bool): By default, any 0-byte packets will be discarded.
@@ -162,25 +162,44 @@ class SLIPPacketizer(object):
                 if i >= end_msg_pos:
                     # EOF at position!
                     break
-                
-                if self.buffer.startswith(self.esc_esc, i):
-                    i += len(self.esc_esc)
-                    if i >= end_msg_pos: break  # buffer overrun
-                    o.extend(self.esc)
-                elif self.buffer.startswith(self.end_esc, i):
-                    i += len(self.end_esc)
-                    if i >= end_msg_pos: break  # buffer overrun
-                    o.extend(self.end)
-                elif self.start_esc and self.buffer.startswith(self.start_esc, i):
-                    i += len(self.start_esc)
-                    if i >= end_msg_pos: break  # buffer overrun
-                    o.extend(self.start)
-                else:
-                    # Unknown sequence (protocol violation).
-                    # "leave the byte alone" per RFC
-                    o.extend(self.esc)
+
+                i, r = self.handle_escape(i, end_msg_pos)
+                if r is None:
+                    # buffer overrun
+                    break
+
+                o.extend(r)
+
 
         return o
+
+    def handle_escape(self, i, end_msg_pos):
+        """
+        "Internal" method, called after an escape sequence was read.
+        
+        
+        """
+        o = None
+        if self.buffer.startswith(self.esc_esc, i):
+            i += len(self.esc_esc)
+            o = self.esc
+        elif self.buffer.startswith(self.end_esc, i):
+            i += len(self.end_esc)
+            o = self.end
+        elif self.start_esc and self.buffer.startswith(self.start_esc, i):
+            i += len(self.start_esc)
+            o = self.start
+        else:
+            # Unknown sequence (protocol violation).
+            # "leave the byte alone" per RFC
+            i += 1
+            o = self.esc
+
+        if i >= end_msg_pos:
+            # buffer overrun
+            return i, None
+
+        return i, o
 
     def encode_data(self, pkt):
         """
@@ -231,6 +250,29 @@ class SLIPPacketizer(object):
 
 
 class SLIPSocket(SuperSocket):
+    """
+    SLIPSocket implements a wrapper around a file descriptor to packetise a
+    Serial Line IP stream.
+    
+    By default, this uses ``SLIPPacketizer``, which follows RFC 1055. One may
+    specify a different ``packetizer`` implementation for alternate
+    end/escape/start markers.
+    
+    This implementation sends packets to the ``Raw`` layer by default.  One can
+    specify a reference to another ``Packet`` subclass with ``cls``.
+    
+    Note that nothing about RFC 1055 specifies a particular packet type, and
+    there is no requirement that it contains IPv4.
+    
+    Args:
+        fd: a file-like object to stream data from. This can be a file on
+            disk, or something else that implements the interface (such as
+            pyserial)
+        packetizer: a class to converts the stream into a series of packets.
+                    By default, this uses ``SLIPPacketizer``.
+        cls: a ``Packet`` subclass for decoding the packets with. By default,
+             this uses the ``Raw`` type.
+    """
     def __init__(self, fd, packetizer=None, cls=None):
         self.ins = self.outs = fd
         self.packetizer = packetizer or SLIPPacketizer()
