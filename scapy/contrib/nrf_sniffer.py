@@ -65,7 +65,7 @@ PACKET_COMMON_FIELDS = [
 
 
 class NRFS2_Packet(Packet):
-    name = "nRF Sniffer v2 Packet"
+    name = "nRF Sniffer v2 Packet (device variant)"
     fields_desc = [
         LenField("len", None, fmt="<H", adjust=lambda x: x + 6),
     ] + PACKET_COMMON_FIELDS
@@ -92,7 +92,7 @@ class NRFS2_Ping_Response(Packet):
 
 
 class NRFS2_Packet_Event(Packet):
-    name = "Packet event"
+    name = "Packet event (device variant)"
     fields_desc = [
         ByteField("header_len", 10),
         ByteField("flags", 0),
@@ -166,12 +166,14 @@ class NRFS2_PCAP(Packet):
 
 
 class NRFS2_PCAP_Packet(NRFS2_Packet):
+    name = "nRF Sniffer v2 Packet (pcap variant)"
     fields_desc = [
         LenField("len", None, fmt="<H", adjust=lambda x: x),
     ] + PACKET_COMMON_FIELDS
 
 
 class NRFS2_PCAP_Packet_Event(NRFS2_Packet_Event):
+    name = "Packet event (pcap variant)"
     # Doesn't include any padding.
     def post_build(self, p, pay):
         return p + pay
