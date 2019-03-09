@@ -38,10 +38,12 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
     closed = 0
     read_allowed_exceptions = ()
 
-    def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0):  # noqa: E501
+    def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM,
+                 proto=0, default_read_size=MTU):  # noqa: E501
         self.ins = socket.socket(family, type, proto)
         self.outs = self.ins
         self.promisc = None
+        self.default_read_size = default_read_size
 
     def send(self, x):
         sx = raw(x)
@@ -49,11 +51,17 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
             x.sent_time = time.time()
         return self.outs.send(sx)
 
-    def recv_raw(self, x=MTU):
+    def recv_raw(self, x=None):
         """Returns a tuple containing (cls, pkt_data, time)"""
+        if x is None:
+            x = self.default_read_size
+
         return conf.raw_layer, self.ins.recv(x), None
 
-    def recv(self, x=MTU):
+    def recv(self, x=None):
+        if x is None:
+            x = self.default_read_size
+
         cls, val, ts = self.recv_raw(x)
         if not val or not cls:
             return
@@ -187,9 +195,10 @@ class L3RawSocket(SuperSocket):
 class SimpleSocket(SuperSocket):
     desc = "wrapper around a classic socket"
 
-    def __init__(self, sock):
+    def __init__(self, sock, default_read_size=MTU):
         self.ins = sock
         self.outs = sock
+        self.default_read_size = default_read_size
 
 
 class StreamSocket(SimpleSocket):
