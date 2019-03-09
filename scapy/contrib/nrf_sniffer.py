@@ -17,19 +17,23 @@
 # py2 compat
 from __future__ import absolute_import
 
+from scapy.compat import raw
+from scapy.config import conf
+from scapy.error import warning
 from scapy.packet import Packet, bind_layers
 from scapy.layers.bluetooth4LE import BTLE
-from scapy.layers.slip import SLIPPacketizer, SLIPSocket
+from scapy.layers.slip import SLIPPacketizer
 from scapy.layers.ppi import addPPIType, PPI
 from scapy.fields import LEIntField, SignedByteField, StrField, BitField, \
-    StrFixedLenField, LEShortField, FixedPointField, ByteEnumField
+    StrFixedLenField, LEShortField, FixedPointField, ByteEnumField, \
+    ByteField, LenField
 
 try:
     import serial
 except ImportError:
     serial = None
 
-MTU = 256
+NRFS_READ_SIZE = 64
 DLT_NORDIC_BLE = 272
 
 PACKET_COMMON_FIELDS = [
@@ -145,7 +149,7 @@ class NRFS2_PCAP(Packet):
     @classmethod
     def convert_device_packet(cls, pkt):
         if not isinstance(pkt, NRFS2_Packet):
-            raise ArgumentError("Expected NRFS2_Packet")
+            raise ValueError("Expected NRFS2_Packet")
 
         if NRFS2_Packet_Event not in pkt:
             return cls()/pkt
@@ -161,8 +165,12 @@ class NRFS2_PCAP(Packet):
         new_pkt.version = pkt[NRFS2_Packet].version
         new_pkt.counter = pkt[NRFS2_Packet].counter
 
-
         return cls()/new_pkt
+
+    @classmethod
+    def convert_device_packets(cls, pkts):
+        for pkt in pkts:
+            yield cls.convert_device_packet(pkt)
 
 
 class NRFS2_PCAP_Packet(NRFS2_Packet):
@@ -182,104 +190,29 @@ class NRFS2_PCAP_Packet_Event(NRFS2_Packet_Event):
         return s
 
 
-class NRFSPacketizer(SLIPPacketizer):
+class NRFS_Packetizer(SLIPPacketizer):
     """
     Implements the variant of SLIP used by nRF Sniffer.
     """
-    def __init__(self, discard_empty=True):
-        SLIPPacketizer.__init__(
-            self,
+    def __init__(self):
+        super(NRFS_Packetizer, self).__init__(
             esc=b'\xcd',
             esc_esc=b'\xce',
             end=b'\xbc',
             end_esc=b'\xbd',
             start=b'\xab',
             start_esc=b'\xac',
-            discard_empty=discard_empty,
         )
 
 
-class NRFSnifferSocket(SLIPSocket):
-    """
-    Implements serial connectivity with nRF Sniffer.
+def nrfs_connect(port, baudrate=460800, timeout=0):
+    if serial is None:
+        warning("pyserial is required to connect to nRF Sniffer!")
+        return
 
-    https://www.nordicsemi.com/Software-and-Tools/Development-Tools/nRF-Sniffer
+    fd = serial.Serial(port=port, baudrate=baudrate, timeout=timeout)
+    return NRFS_Packetizer().make_socket(fd, NRFS2_Packet, NRFS_READ_SIZE)
 
-    This requires:
-
-    * a compatible Nordic nRF51/52 with nRF Sniffer installed
-    * a TTL UART which is connected to the nRF
-    * pyserial
-
-    The following pins need to be connected for this to work:
-
-    * VDD -> +3v supply
-    * GND -> ground
-    * RTS (P0.05) -> CTS on UART
-    * TXD (P0.06) -> RXD on UART
-    * CTS (P0.07) -> RTS on UART (or ground)
-    * RXD (P0.08) -> TXD on UART
-
-    The nRF52 development kit already has these pins hooked up correctly, and
-    has an on-board USB UART. Other boards are a bit more involved.
-
-    Note: CTS on the nRF board must be connected to either RTS on your UART, or
-    to ground. Failure to do so will cause the GPIO to float. A symptom is that
-    you'll get a few bytes from the controller, and then it will stop.
-
-    The nRF has a TTL-level UART. Connecting it to PC serial ports will not
-    work, and damage the nRF.
-
-    The "native" type of this socket is ``NRFS2_Packet``. This represents the
-    actual wire format from nRF Sniffer.
-    
-    However, Nordic's scripts rewrite this packet, and _that_ format is used
-    for ``DLT_NORDIC_BLE`` (rather than the actual wire format).  For
-    compatibility with these tools, by default the flag ``convert_pcap=True``
-    is set, which converts packets into ``NRFS2_PCAP``.
-    
-    One could also use the ``DLT_BLUETOOTH_LE_LL`` compatible format with::
-    
-        bpkts = PacketList([x[BTLE] for x in pkts if BTLE in x], "Sniffed")
-        wrpcap("/tmp/mycap.pcap", bpkts)
-    
-    """
-
-    desc = "communicate with nRF hardware"
-
-    def __init__(self, port, baudrate=460800, convert_pcap=True):
-        if serial is None:
-            warning("pyserial is required to connect to nRF Sniffer!")
-            return
-
-        SLIPSocket.__init__(
-            self,
-            fd=serial.Serial(
-                port=port,
-                baudrate=baudrate,  # currently hard-coded in FW
-            ),
-            packetizer=NRFSPacketizer(),
-            cls=NRFS2_Packet,
-        )
-
-        self.convert_pcap = bool(convert_pcap)
-
-    def recv_raw(self, x=MTU):
-        return super(NRFSnifferSocket, self).recv_raw(x)
-
-    def recv(self, x=MTU):
-        pkt = super(NRFSnifferSocket, self).recv(x)
-        if self.convert_pcap and pkt is not None:
-            return NRFS2_PCAP.convert_device_packet(pkt)
-        return pkt
-
-    def send(self, pkt):
-        if isinstance(pkt, NRFS2_PCAP):
-            # The PCAP header is silly, get rid of it...
-            pkt = pkt.payload
-        if not isinstance(pkt, NRFS2_Packet):
-            pkt = NRFS2_Packet()/pkt
-        return super(NRFSnifferSocket, self).send(pkt)
 
 # Register ourselves for pcap
 conf.l2types.register(DLT_NORDIC_BLE, NRFS2_PCAP)

@@ -7,20 +7,24 @@
 # This program is published under a GPLv2 (or later) license
 
 from __future__ import absolute_import
-from threading import Lock
-import time
-from queue import SimpleQueue, Empty
 
-from scapy.config import conf
-from scapy.data import MTU
-from scapy.modules import six
-from scapy.supersocket import SuperSocket
+import os
+
+from scapy.compat import raw
+from scapy.error import warning
+from scapy.layers.inet import IP
+from scapy.packetizer import Packetizer
+
+try:
+    import serial
+except ImportError:
+    serial = None
 
 
-class SLIPPacketizer(object):
+class SLIPPacketizer(Packetizer):
     """
     SLIPPacketizer implements RFC 1055 Serial Line "IP".
-    
+
     "IP" is in quotation marks, because nothing about the RFC requires that
     you use it for IPv4.
 
@@ -35,8 +39,8 @@ class SLIPPacketizer(object):
     In order to include a literal ``esc``, then the sequence is ``esc`` then
     ``esc_esc``.
 
-    In addition to the RFC:
-    
+    In addition to the RFC::
+
     * one can **also** require that ``start`` (bytes) must be at the start of
       each message. This makes it easier for each side to restart a packet
       mid-transmission.
@@ -45,27 +49,26 @@ class SLIPPacketizer(object):
 
     By default, this class operates according to RFC 1055.
 
-    Args:
-        esc (bytes): The sequence that precedes all escape sequences.
-        esc_esc (bytes): The sequence for including a literal ``esc``.
-        end (bytes): The sequence that terminates each packet.
-        end_esc (bytes): The sequence for including a literal ``end``.
-        start (bytes, optional): The sequence that precedes each packet.
-        start_esc (bytes, optional): The sequence for including a literal
-                                     ``start``.
-        discard_empty (bool): By default, any 0-byte packets will be discarded.
-                              Some systems may use this as a keep-alive.
-
+    :param esc: (bytes) sequence that precedes all escape sequences
+    :param esc_esc: (bytes) sequence for including a literal ``esc``
+    :param end: (bytes) sequence that terminates each packet
+    :param end_esc: (bytes) sequence for including a literal ``end``
+    :param start: (optional, bytes) sequence that precedes each packet.
+    :param start_esc: (optional, bytes) sequence for including a literal
+                      ``start``.
     """
-    def __init__(self, esc=b"\333", esc_esc=b"\335", end=b"\300", end_esc=b"\334", start=None, start_esc=None, discard_empty=True):
+    def __init__(self, esc=b"\333", esc_esc=b"\335", end=b"\300",
+                 end_esc=b"\334", start=None, start_esc=None):
+        super(SLIPPacketizer, self).__init__()
         if (not esc) or (not esc_esc):
-            raise RuntimeError("Both esc and esc_esc must be always declared")
+            raise ValueError("Both esc and esc_esc must be always declared")
 
-        if (not end or not end_esc):
-            raise RuntimeError("Both end and end_esc must be always declared")
-        
+        if (not end) or (not end_esc):
+            raise ValueError("Both end and end_esc must be always declared")
+
         if bool(start) != bool(start_esc):
-            raise RuntimeError("start, start_esc must both be declared, or neither declared")
+            raise ValueError("start, start_esc must both be declared, or "
+                             "neither declared")
 
         self.esc = raw(esc)
         self.esc_esc = raw(esc_esc)
@@ -75,64 +78,24 @@ class SLIPPacketizer(object):
 
         self.end = raw(end)
         self.end_esc = raw(end_esc)
-        
-        self.discard_empty = bool(discard_empty)
 
-        self.buffer = bytearray()
-        self.buffer_lock = Lock()
+    def find_end(self):
+        p = self.buffer.find(self.end)
+        if p > -1:
+            p += len(self.end)
+        return p
 
-    def clear_buffer(self):
-        """
-        Clears the buffer.
-
-        This will cause any partial packets to be discarded.
-        
-        If ``start`` is not set and a packet is in progress, a corrupted packet
-        will be returned in the next callback.
-        
-        This method blocks while acquiring the buffer lock.
-        """
-        with self.buffer_lock:
-            self.buffer = bytearray()
-
-    def data_received(self, data, callback):
-        """
-        Adds data to the decoding buffer, and starts processing it.
-
-        This method will call ``callback`` once for each complete packet that
-        was received.
-
-        This method blocks while acquiring the buffer lock.
-
-        Args:
-            data (bytes): data to append to the buffer.
-            callback (callable): a method that takes one parameter, a tuple of
-                                 the decoded packet bytes and a timestamp.
-        """
-        with self.buffer_lock:
-            self.buffer.extend(data)
-            
-            end_msg_pos = self.buffer.find(self.end)
-            while end_msg_pos > -1:
-                if self.discard_empty and end_msg_pos == 0:
-                    del self.buffer[:len(self.end)]
-                else:
-                    # split out the decoded packet
-                    p = self._decode_packet(end_msg_pos)
-                    del self.buffer[:end_msg_pos + len(self.end)]
-
-                    if p:
-                        callback((p, time.time()))
-            
-                end_msg_pos = self.buffer.find(self.end)
-
-    def _decode_packet(self, end_msg_pos):
+    def decode_frame(self, length):
         # Internal-only method. This is called by data_received to fetch a
         # single bucket.
         o = bytearray()
         i = 0
+
+        # Discard end-of-packet marker
+        length -= len(self.end)
+
         if self.start:
-            start_idx = self.buffer.find(self.start, i, end_msg_pos)
+            start_idx = self.buffer.find(self.start, i, length)
             if start_idx == -1:
                 # No start flag, or start is after the end.
                 # Discard this message.
@@ -140,18 +103,18 @@ class SLIPPacketizer(object):
 
             while start_idx > -1:
                 i = start_idx + len(self.start)
-                start_idx = self.buffer.find(self.start, i, end_msg_pos)
+                start_idx = self.buffer.find(self.start, i, length)
 
         # start decoding packets
         # stop when we reach an "end" sequence
-        while i < end_msg_pos:
+        while i < length:
             # find an escape sequence
-            esc_pos = self.buffer.find(self.esc, i, end_msg_pos)
-            
+            esc_pos = self.buffer.find(self.esc, i, length)
+
             if esc_pos == -1:
                 # There was no escape sequence, copy the rest of the message.
-                o.extend(self.buffer[i:end_msg_pos])
-                i = end_msg_pos
+                o.extend(self.buffer[i:length])
+                i = length
             else:
                 # There was an escape sequence. Handle it.
                 if i < esc_pos:
@@ -159,27 +122,21 @@ class SLIPPacketizer(object):
                     o.extend(self.buffer[i:esc_pos])
 
                 i = esc_pos + len(self.esc)
-                if i >= end_msg_pos:
+                if i >= length:
                     # EOF at position!
                     break
 
-                i, r = self.handle_escape(i, end_msg_pos)
+                i, r = self.handle_escape(i, length)
                 if r is None:
                     # buffer overrun
                     break
 
                 o.extend(r)
 
-
         return o
 
     def handle_escape(self, i, end_msg_pos):
-        """
-        "Internal" method, called after an escape sequence was read.
-        
-        
-        """
-        o = None
+        """Called after an escape sequence was read."""
         if self.buffer.startswith(self.esc_esc, i):
             i += len(self.esc_esc)
             o = self.esc
@@ -201,13 +158,9 @@ class SLIPPacketizer(object):
 
         return i, o
 
-    def encode_data(self, pkt):
-        """
-        Encodes a packet in binary form with SLIP.
-
-        This does NOT use the buffer lock.
-        """
-        d = raw(pkt)
+    def encode_frame(self, pkt):
+        """Encodes a packet in binary form with SLIP."""
+        d = super(SLIPPacketizer, self).encode_frame(pkt)
         o = bytearray()
         if self.start:
             o.extend(self.start)
@@ -218,8 +171,9 @@ class SLIPPacketizer(object):
             esc_pos = d.find(self.esc, i)
             end_pos = d.find(self.end, i)
             start_pos = d.find(self.start, i) if self.start else -1
-            
-            apos = list(filter(lambda x: x > -1, (esc_pos, end_pos, start_pos)))
+
+            apos = list(filter(lambda x: x > -1,
+                               (esc_pos, end_pos, start_pos)))
 
             if not apos:
                 # There are no more escape characters to escape.
@@ -249,70 +203,42 @@ class SLIPPacketizer(object):
         return bytes(o)
 
 
-class SLIPSocket(SuperSocket):
+def slip_socket(fd, packet_class=None, default_read_size=None):
+    """SLIP socket around a given file-like object."""
+    return SLIPPacketizer().make_socket(fd, packet_class, default_read_size)
+
+
+def slip_ipv4_socket(fd, default_read_size=None):
+    """SLIP socket around a given file-like object for IPv4 payloads."""
+    return slip_socket(fd, IP, default_read_size)
+
+
+def slip_connect(port, baudrate=9600, timeout=0, packet_class=IP):
     """
-    SLIPSocket implements a wrapper around a file descriptor to packetise a
-    Serial Line IP stream.
-    
-    By default, this uses ``SLIPPacketizer``, which follows RFC 1055. One may
-    specify a different ``packetizer`` implementation for alternate
-    end/escape/start markers.
-    
-    This implementation sends packets to the ``Raw`` layer by default.  One can
-    specify a reference to another ``Packet`` subclass with ``cls``.
-    
-    Note that nothing about RFC 1055 specifies a particular packet type, and
-    there is no requirement that it contains IPv4.
-    
-    Args:
-        fd: a file-like object to stream data from. This can be a file on
-            disk, or something else that implements the interface (such as
-            pyserial)
-        packetizer: a class to converts the stream into a series of packets.
-                    By default, this uses ``SLIPPacketizer``.
-        cls: a ``Packet`` subclass for decoding the packets with. By default,
-             this uses the ``Raw`` type.
+    Creates a SLIP connection on a given serial port.
+
+    This method requires PySerial.
+
+    :param port: Path to the port to use, eg: ``/dev/ttyS0``
+    :param baudrate: Baud rate to connect at.
+    :param timeout: Set to 0, so that select-based polling works.
+    :param packet_class: Packet class to use on the link. Defaults to IP.
+    :return: A SuperSocket which is connected to the serial port.
     """
-    def __init__(self, fd, packetizer=None, cls=None):
-        self.ins = self.outs = fd
-        self.packetizer = packetizer or SLIPPacketizer()
-        self.cls = cls or conf.raw_layer
-        self.packet_queue = SimpleQueue()
+    if serial is None:
+        warning("pyserial is required to use a real serial port!")
+        return
 
-        # This prevents us from erroring in sr() when there's no packet.
-        self.promisc = True
+    fd = serial.Serial(port=port, baudrate=baudrate, timeout=timeout)
+    return SLIPPacketizer().make_socket(fd, packet_class)
 
-    def recv_raw(self, x=MTU):
-        try:
-            pkt, ts = self.packet_queue.get_nowait()
-            return self.cls, pkt, ts
-        except Empty:
-            # Well, looks like we need to do some work...
-            pass
 
-        # read some bytes
-        self.packetizer.data_received(self.ins.read(x), self.packet_queue.put)
-        
-        # Do we have some packets now?
-        try:
-            pkt, ts = self.packet_queue.get_nowait()
-            return self.cls, pkt, ts
-        except Empty:
-            return
+def slip_pty(packet_class=IP):
+    """Makes a slip PTY"""
 
-    def send(self, x):
-        sx = raw(x)
-        if hasattr(x, 'sent_time'):
-            x.sent_time = time.time()
-        self.ins.write(self.packetizer.encode_data(sx))
+    parent_fd, child_fd = os.openpty()
+    child_fn = os.ttyname(child_fd)
+    parent_fh = open(parent_fd, mode='r+b', buffering=0)
+    parent_socket = SLIPPacketizer().make_socket(parent_fh, packet_class)
 
-    @staticmethod
-    def select(sockets, remain=conf.recv_poll_rate):
-        # Before passing off to base select, see if we have anything ready in
-        # a queue
-        queued = [s for s in sockets if not s.packet_queue.empty()]
-        if queued:
-            return queued, None
-        
-        return SuperSocket.select(sockets, remain)
-
+    return parent_socket, child_fn, child_fd

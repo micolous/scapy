@@ -13,13 +13,13 @@ import struct
 from scapy.config import conf
 from scapy.data import DLT_PPP, DLT_PPP_SERIAL, DLT_PPP_ETHER, \
     DLT_PPP_WITH_DIR
-from scapy.compat import orb
+from scapy.compat import orb, raw
 from scapy.packet import Packet, bind_layers
 from scapy.layers.eap import EAP
 from scapy.layers.l2 import Ether, CookedLinux, GRE_PPTP
 from scapy.layers.inet import IP
 from scapy.layers.inet6 import IPv6
-from scapy.layers.slip import SLIPPacketizer, SLIPSocket
+from scapy.layers.slip import SLIPPacketizer
 from scapy.fields import BitField, ByteEnumField, ByteField, \
     ConditionalField, FieldLenField, IntField, IPField, \
     PacketListField, PacketField, ShortEnumField, ShortField, \
@@ -877,14 +877,12 @@ class PPP_CHAP_ChallengeResponse(PPP_CHAP):
 
 
 class PPPPacketizer(SLIPPacketizer):
-    def __init__(self, discard_empty=True):
-        SLIPPacketizer.__init__(
-            self,
+    def __init__(self):
+        super(PPPPacketizer, self).__init__(
             esc=b'\x7d',
             esc_esc=b'\x5d',
             end=b'\x7e',
             end_esc=b'\x5e',
-            discard_empty=discard_empty,
         )
 
     def handle_escape(self, i, end_msg_pos):
@@ -892,12 +890,8 @@ class PPPPacketizer(SLIPPacketizer):
         b = self.buffer[i]
         return (i + 1), (b ^ 0x20)
 
-    def encode_data(self, pkt):
-        """
-        Encodes a packet in binary form with PPP.
-
-        This does NOT use the buffer lock.
-        """
+    def encode_frame(self, pkt):
+        """Encodes a packet in binary form with PPP."""
         d = raw(pkt)
         o = bytearray()
         o.extend(self.end)
@@ -909,22 +903,9 @@ class PPPPacketizer(SLIPPacketizer):
         return bytes(o)
 
 
-class PPPSocket(SLIPSocket):
-    """
-    Implements serial connectivity with PPP.
-
-    """
-
-    desc = "communicate with PPP"
-
-    def __init__(self, fd):
-        SLIPSocket.__init__(
-            self,
-            fd=fd,
-            packetizer=PPPPacketizer(),
-            cls=HDLC,
-        )
-
+def ppp_socket(fd, default_read_size=None):
+    """PPP socket around a given file-like object."""
+    return PPPPacketizer().make_socket(fd, HDLC, default_read_size)
 
 
 bind_layers(PPPoED, PPPoED_Tags, type=1)
