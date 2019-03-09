@@ -28,6 +28,8 @@ This document is under a `Creative Commons Attribution - Non-Commercial
    functions
 
    bluetooth
+   nrf_sniffer
+   packetizer
 
    troubleshooting
    development
