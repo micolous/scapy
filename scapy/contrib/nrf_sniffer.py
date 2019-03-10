@@ -146,31 +146,47 @@ class NRFS2_PCAP(Packet):
     def answer(self, other):
         return self.payload and self.payload.answer(other)
 
-    @classmethod
-    def convert_device_packet(cls, pkt):
-        if not isinstance(pkt, NRFS2_Packet):
-            raise ValueError("Expected NRFS2_Packet")
+    def convert_to(self, other_cls, **kwargs):
+        if other_cls is NRFS2_Packet:
+            if NRFS2_PCAP_Packet_Event not in self:
+                return NRFS2_Packet()/self
 
-        if NRFS2_Packet_Event not in pkt:
-            return cls()/pkt
+            d = bytearray(raw(self[NRFS2_PCAP_Packet_Event]))
 
-        # Find and delete the padding byte
-        d = bytearray(raw(pkt[NRFS2_Packet_Event]))
-        #if len(d) < 16:
-        #    assert False, "len={}, d={}".format(len(d), bytes_hex(d))
-        #del d[16]
+            new_pkt = NRFS2_Packet_Event(d)
+            new_pkt = NRFS2_Packet()/new_pkt
+            new_pkt.version = self[NRFS2_PCAP_Packet].version
+            new_pkt.counter = self[NRFS2_PCAP_Packet].counter
+            return new_pkt
 
-        new_pkt = NRFS2_PCAP_Packet_Event(d)
-        new_pkt = NRFS2_PCAP_Packet()/new_pkt
-        new_pkt.version = pkt[NRFS2_Packet].version
-        new_pkt.counter = pkt[NRFS2_Packet].counter
-
-        return cls()/new_pkt
+        return Packet.convert_to(self, other_cls, **kwargs)
 
     @classmethod
-    def convert_device_packets(cls, pkts):
-        for pkt in pkts:
-            yield cls.convert_device_packet(pkt)
+    def convert_packet(cls, pkt, **kwargs):
+        if isinstance(pkt, NRFS2_Packet):
+            if NRFS2_Packet_Event not in pkt:
+                return cls()/pkt
+
+            # Find and delete the padding byte
+            d = bytearray(raw(pkt[NRFS2_Packet_Event]))
+            # if len(d) < 16:
+            #    assert False, "len={}, d={}".format(len(d), bytes_hex(d))
+            # del d[16]
+
+            new_pkt = NRFS2_PCAP_Packet_Event(d)
+            new_pkt = NRFS2_PCAP_Packet()/new_pkt
+            new_pkt.version = pkt[NRFS2_Packet].version
+            new_pkt.counter = pkt[NRFS2_Packet].counter
+            return cls()/new_pkt
+
+        if isinstance(pkt, BTLE):
+            # Synthetic event type.
+            return (cls() /
+                    NRFS2_PCAP_Packet() /
+                    NRFS2_PCAP_Packet_Event() /
+                    BTLE())
+
+        return Packet.convert_packet(pkt, **kwargs)
 
 
 class NRFS2_PCAP_Packet(NRFS2_Packet):
