@@ -83,12 +83,26 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
         if self.closed:
             return
         self.closed = True
-        if hasattr(self, "outs"):
-            if not hasattr(self, "ins") or self.ins != self.outs:
-                if self.outs and (WINDOWS or self.outs.fileno() != -1):
-                    self.outs.close()
-        if hasattr(self, "ins"):
-            if self.ins and (WINDOWS or self.ins.fileno() != -1):
+        if hasattr(self, "outs") and self.outs and (not hasattr(self, "ins") or self.ins != self.outs):
+            fn = -1
+            try:
+                fn = self.outs.fileno()
+            except OSError:
+                # The file descriptor doesn't support fileno
+                pass
+
+            if fn != -1:
+                self.outs.close()
+
+        if hasattr(self, "ins") and self.ins:
+            fn = -1
+            try:
+                fn = self.ins.fileno()
+            except OSError:
+                # The file descriptor doesn't support fileno
+                pass
+
+            if fn != -1:
                 self.ins.close()
 
     def sr(self, *args, **kargs):
