@@ -14,6 +14,7 @@ from scapy.compat import raw
 from scapy.error import warning
 from scapy.layers.inet import IP
 from scapy.packetizer import Packetizer
+from scapy.modules.six import string_types
 
 try:
     import serial
@@ -203,17 +204,25 @@ class SLIPPacketizer(Packetizer):
         return bytes(o)
 
 
+def _fd_to_file(fd):
+    if isinstance(fd, string_types + (int,)):
+        return open(fd, mode='r+b', buffering=0)
+    return fd
+
+
 def slip_socket(fd, packet_class=None, default_read_size=None):
     """SLIP socket around a given file-like object."""
+    fd = _fd_to_file(fd)
     return SLIPPacketizer().make_socket(fd, packet_class, default_read_size)
 
 
 def slip_ipv4_socket(fd, default_read_size=None):
     """SLIP socket around a given file-like object for IPv4 payloads."""
+    fd = _fd_to_file(fd)
     return slip_socket(fd, IP, default_read_size)
 
 
-def slip_connect(port, baudrate=9600, timeout=0, packet_class=IP):
+def slip_serial(port, baudrate=9600, timeout=0, packet_class=IP):
     """
     Creates a SLIP connection on a given serial port.
 
