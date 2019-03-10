@@ -570,6 +570,20 @@ lfilter: truth function to apply to each packet to decide whether it will be dis
             x.append(p)
         return x
 
+    def convert_to(self, other_cls, **kwargs):
+        """Converts all packets to another type.
+
+        See ``Packet.convert_to`` for more info.
+        """
+        name = kwargs.get('name')
+        stats = kwargs.get('stats')
+        if name is None:
+            name = "{} converted to {}".format(self.listname, other_cls.__name__)
+
+        return PacketList(
+            [p.convert_to(other_cls, **kwargs) for p in self.res],
+            name, stats
+        )
 
 class SndRcvList(PacketList):
     __slots__ = []
