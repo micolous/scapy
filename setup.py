@@ -50,7 +50,8 @@ setup(
             'pyx>=0.14; python_version>="3"',
             'pyx==0.12.1; python_version<"3"',
             'cryptography',
-            'matplotlib'
+            'matplotlib',
+            'pyserial>=3.0.0',
         ]
     },
 
