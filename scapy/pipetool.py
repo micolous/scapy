@@ -274,10 +274,14 @@ class Pipe(six.with_metaclass(_PipeMeta, _ConnectorLogic)):
         self.name = name
 
     def _send(self, msg):
+        if not msg:
+            return
         for s in self.sinks:
             s.push(msg)
 
     def _high_send(self, msg):
+        if not msg:
+            return
         for s in self.high_sinks:
             s.high_push(msg)
 
