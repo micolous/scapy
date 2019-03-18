@@ -8,6 +8,8 @@ SuperSocket.
 """
 
 from __future__ import absolute_import
+
+from io import UnsupportedOperation
 from select import select, error as select_error
 import errno
 import os
@@ -87,7 +89,7 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
             fn = -1
             try:
                 fn = self.outs.fileno()
-            except OSError:
+            except (OSError, UnsupportedOperation):
                 # The file descriptor doesn't support fileno
                 pass
 
@@ -98,7 +100,7 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
             fn = -1
             try:
                 fn = self.ins.fileno()
-            except OSError:
+            except (OSError, UnsupportedOperation):
                 # The file descriptor doesn't support fileno
                 pass
 
