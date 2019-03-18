@@ -1558,6 +1558,10 @@ class Raw(Packet):
                 return "Raw %r" % self.load
         return Packet.mysummary(self)
 
+    @classmethod
+    def convert_packet(cls, pkt, **kwargs):
+        return Raw(raw(pkt))
+
 
 class Padding(Raw):
     name = "Padding"
