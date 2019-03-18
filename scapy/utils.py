@@ -60,6 +60,47 @@ def get_temp_file(keep=False, autoext=""):
     return fname
 
 
+def get_temp_dir(keep=False):
+    """Creates a temporary file, and returns its name.
+
+    :param keep: If False (default), the directory will be recursively
+                 deleted when Scapy exits.
+    :return: A full path to a temporary directory.
+    """
+
+    dname = tempfile.mkdtemp(prefix="scapy")
+
+    if not keep:
+        conf.temp_files.append(dname)
+
+    return dname
+
+
+def get_temp_fifo(keep=False):
+    """Creates a temporary FIFO, and returns its name.
+
+    The FIFO is not opened.
+
+    This only works on UNIX-like platforms (per :py:func:`os.mkfifo`).
+
+    :param keep: If False (default), the FIFO will be deleted when Scapy exits.
+    :return: A full path to a temporary FIFO.
+    """
+
+    dname = get_temp_dir(keep=keep)
+
+    # The directory name above will be "unique" and "new", so there should be
+    # no need to generate a directory name.
+    fname = os.path.join(dname, "fifo")
+
+    os.mkfifo(fname, 0o600)
+
+    if not keep:
+        conf.temp_files.append(fname)
+
+    return fname
+
+
 def sane_color(x):
     r = ""
     for i in x:

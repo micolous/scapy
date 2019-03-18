@@ -353,3 +353,11 @@ saved_conf_prog_tcpdump = conf.prog.tcpdump
 conf.prog.tcpdump = "does_not_exist"
 assert _check_tcpdump() == False
 conf.prog.tcpdump = saved_conf_prog_tcpdump
+
+= Test get_temp_fifo
+~ linux
+
+import stat
+fname = get_temp_fifo()
+s = os.stat(fname)
+assert stat.S_ISFIFO(s.st_mode)

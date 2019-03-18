@@ -11581,3 +11581,8 @@ os.remove(filename_css)
 #    assert(output == expected)
 #
 #test_snmpwalk("secdev.org")
+
+= test get_temp_dir
+
+dname = get_temp_dir()
+assert os.path.isdir(dname)
