@@ -8,7 +8,7 @@ from __future__ import absolute_import
 import abc
 from threading import Lock
 import time
-from queue import SimpleQueue, Empty
+from scapy.modules.six.moves.queue import Queue, Empty
 
 from scapy.compat import ABC, raw
 from scapy.config import conf
@@ -129,7 +129,7 @@ class PacketizerSocket(SimpleSocket):
 
         self.packet_class = packet_class or conf.raw_layer
         self.packetizer = packetizer
-        self._packet_queue = SimpleQueue()
+        self._packet_queue = Queue()
 
         self.promisc = True
 
