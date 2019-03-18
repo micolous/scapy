@@ -48,16 +48,25 @@ def issubtype(x, t):
     return isinstance(x, type) and issubclass(x, t)
 
 
-def get_temp_file(keep=False, autoext=""):
-    """Create a temporary file and return its name. When keep is False,
-    the file is deleted when scapy exits.
+def get_temp_file(keep=False, autoext="", fd=False):
+    """Creates a temporary file.
 
+    :param keep: If False, automatically delete the file when Scapy exits.
+    :param autoext: Suffix to add to the generated file name.
+    :param fd: If True, this returns a file-like object with the temporary
+               file opened. If False (default), this returns a file path.
     """
-    fname = tempfile.NamedTemporaryFile(prefix="scapy", suffix=autoext,
-                                        delete=False).name
+    f = tempfile.NamedTemporaryFile(prefix="scapy", suffix=autoext,
+                                    delete=False)
     if not keep:
-        conf.temp_files.append(fname)
-    return fname
+        conf.temp_files.append(f.name)
+
+    if fd:
+        return f
+    else:
+        # Close the file so something else can take it.
+        f.close()
+        return f.name
 
 
 def get_temp_dir(keep=False):
@@ -1406,18 +1415,24 @@ def import_hexcap():
 
 
 @conf.commands.register
-def wireshark(pktlist, **kwargs):
+def wireshark(pktlist):
     """Run wireshark on a list of packets"""
-    f = get_temp_file()
-    wrpcap(f, pktlist, **kwargs)
-    with ContextManagerSubprocess("wireshark()", conf.prog.wireshark):
-        subprocess.Popen([conf.prog.wireshark, "-r", f])
+    tcpdump(pktlist, prog=conf.prog.wireshark)
 
 
 @conf.commands.register
 def tcpdump(pktlist, dump=False, getfd=False, args=None,
-            prog=None, getproc=False, quiet=False):
-    """Run tcpdump or tshark on a list of packets
+            prog=None, getproc=False, quiet=False, use_tempfile=None):
+    """Run tcpdump or tshark on a list of packets.
+
+    When using ``tcpdump`` on OSX (``prog == conf.prog.tcpdump``), this uses a
+    temporary file to store the packets. This works around a bug in Apple's
+    version of ``tcpdump``: http://apple.stackexchange.com/questions/152682/
+
+    Otherwise, the packets are passed in stdin, with ``-r -``.
+
+    This function can be explicitly enabled or disabled with the
+    ``use_tempfile`` parameter.
 
 pktlist: a Packet instance, a PacketList instance or a list of Packet
          instances. Can also be a filename (as a string) or an open
@@ -1432,6 +1447,10 @@ args:    arguments (as a list) to pass to tshark (example for tshark:
          args=["-T", "json"]). Defaults to ["-n"].
 prog:    program to use (defaults to tcpdump, will work with tshark)
 quiet:   when set to True, the process stderr is discarded
+use_tempfile: When set to True, always use a temporary file to store packets.
+              When set to False, pipe packets through stdin.
+              When set to None (default), only use a temporary file with
+              ``tcpdump`` on OSX.
 
 Examples:
 
@@ -1465,14 +1484,20 @@ To get a JSON representation of a tshark-parsed PacketList(), one can:
   u'_type': u'pcap_file'}]
 >>> json_data[0]['_source']['layers']['ip']['ip.ttl']
 u'64'
-
     """
     getfd = getfd or getproc
     if prog is None:
         prog = [conf.prog.tcpdump]
+        _prog_name = "windump()" if WINDOWS else "tcpdump()"
     elif isinstance(prog, six.string_types):
+        _prog_name = "{}()".format(prog)
         prog = [prog]
-    _prog_name = "windump()" if WINDOWS else "tcpdump()"
+
+    if use_tempfile is None:
+        # Apple's tcpdump cannot read from stdin, see:
+        # http://apple.stackexchange.com/questions/152682/
+        use_tempfile = DARWIN and prog[0] == conf.prog.tcpdump
+
     if pktlist is None:
         with ContextManagerSubprocess(_prog_name, prog[0]):
             proc = subprocess.Popen(
@@ -1487,10 +1512,8 @@ u'64'
                 stdout=subprocess.PIPE if dump or getfd else None,
                 stderr=open(os.devnull) if quiet else None,
             )
-    elif DARWIN:
-        # Tcpdump cannot read from stdin, see
-        # <http://apple.stackexchange.com/questions/152682/>
-        tmpfile = tempfile.NamedTemporaryFile(delete=False)
+    elif use_tempfile:
+        tmpfile = get_temp_file(autoext=".pcap", fd=True)
         try:
             tmpfile.writelines(iter(lambda: pktlist.read(1048576), b""))
         except AttributeError:
@@ -1503,7 +1526,6 @@ u'64'
                 stdout=subprocess.PIPE if dump or getfd else None,
                 stderr=open(os.devnull) if quiet else None,
             )
-        conf.temp_files.append(tmpfile.name)
     else:
         with ContextManagerSubprocess(_prog_name, prog[0]):
             proc = subprocess.Popen(
