@@ -594,3 +594,51 @@ result = c.q.get(timeout=10)
 p.stop()
 
 assert result.startswith(b"HTTP/1.1 200 OK")
+
+= Packet conversion (ConvertPipe)
+
+class PacketA(Packet):
+    fields_desc = [LEShortField('foo', None)]
+
+class PacketB(Packet):
+    fields_desc = [ShortField('bar', None)]
+    def convert_to(self, other_cls, **kwargs):
+        if other_cls is PacketA:
+            return PacketA(foo=self.bar)
+        return Packet.convert_to(self, other_cls, **kwargs)
+    @classmethod
+    def convert_packet(cls, pkt, **kwargs):
+        if isinstance(pkt, PacketA):
+            return cls(bar=pkt.foo)
+        return Packet.convert_packet(pkt, **kwargs)
+
+p = PipeEngine()
+s = CLIFeeder()
+sh = CLIHighFeeder()
+c = ConvertPipe(low_type=PacketA)
+d = QueueSink()
+
+s > c > d
+sh >> c >> d
+
+p.add(s)
+p.start()
+
+s.send(PacketB(bar=1234))
+sh.send(PacketB(bar=1234))
+results = d.q.get(timeout=1), d.q.get(timeout=1)
+p.stop()
+assert raw(results[0]) == b'\xd2\x04'
+assert raw(results[1]) == b'\x04\xd2'
+
+# Try converting on high
+c.high_type = PacketB
+c.low_type = None
+
+p.start()
+s.send(PacketA(foo=1234))
+sh.send(PacketA(foo=1234))
+results = d.q.get(timeout=1), d.q.get(timeout=1)
+p.stop()
+assert raw(results[0]) == b'\xd2\x04'
+assert raw(results[1]) == b'\x04\xd2'
