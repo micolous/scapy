@@ -475,7 +475,8 @@ class L2Socket(SuperSocket):
             warning("Unable to guess type (interface=%s protocol=%#x family=%i). Using %s", sa_ll[0], sa_ll[1], sa_ll[3], self.LL.name)  # noqa: E501
 
     def close(self):
-        if self.closed:
+        # Called by __del__, so we need to take care...
+        if self.closed or not hasattr(self, 'ins'):
             return
         if self.promisc:
             set_promisc(self.ins, self.iface, 0)
