@@ -12,18 +12,16 @@
 # scapy.contrib.description = iBeacon BLE proximity beacon
 # scapy.contrib.status = loads
 
-from scapy.packet import bind_layers, Packet
 from scapy.fields import ByteEnumField, LenField, PacketListField, \
     ShortField, SignedByteField, UUIDField
 from scapy.layers.bluetooth import EIR_Hdr, EIR_Manufacturer_Specific_Data, \
-    EIR_Flags, HCI_Hdr, HCI_Command_Hdr, \
-    HCI_Cmd_LE_Set_Advertising_Data, HCI_LE_Meta_Advertising_Report
-
+    LowEnergyBeaconHelper
+from scapy.packet import bind_layers, Packet
 
 APPLE_MFG = 0x004c
 
 
-class Apple_BLE_Submessage(Packet):
+class Apple_BLE_Submessage(Packet, LowEnergyBeaconHelper):
     """
     A basic Apple submessage.
     """
@@ -56,16 +54,8 @@ class Apple_BLE_Submessage(Packet):
         """See Apple_BLE_Frame.build_eir."""
         return self.build_frame().build_eir()
 
-    def build_advertising_report(self):
-        """See Apple_BLE_Frame.build_advertising_report."""
-        return self.build_frame().build_advertising_report()
 
-    def build_set_advertising_data(self):
-        """See Apple_BLE_Frame.build_set_advertising_data."""
-        return self.build_frame().build_set_advertising_data()
-
-
-class Apple_BLE_Frame(Packet):
+class Apple_BLE_Frame(Packet, LowEnergyBeaconHelper):
     """
     The wrapper for a BLE manufacturer-specific data advertisement from Apple
     devices.
@@ -82,30 +72,9 @@ class Apple_BLE_Frame(Packet):
     def build_eir(self):
         """Builds a list of EIR messages to wrap this frame."""
 
-        return [
-            EIR_Hdr() / EIR_Flags(flags=[
-                "general_disc_mode", "br_edr_not_supported"]),
+        return LowEnergyBeaconHelper.base_eir + [
             EIR_Hdr() / EIR_Manufacturer_Specific_Data() / self
         ]
-
-    def build_advertising_report(self):
-        """Builds HCI_LE_Meta_Advertising_Report containing this frame."""
-
-        return HCI_LE_Meta_Advertising_Report(
-            type=0,   # Undirected
-            atype=1,  # Random address
-            data=self.build_eir()
-        )
-
-    def build_set_advertising_data(self):
-        """Builds a HCI_Cmd_LE_Set_Advertising_Data containing this frame.
-
-        This includes the HCI_Hdr and HCI_Command_Hdr layers.
-        """
-
-        return HCI_Hdr() / HCI_Command_Hdr() / HCI_Cmd_LE_Set_Advertising_Data(
-            data=self.build_eir()
-        )
 
 
 class IBeacon_Data(Packet):
