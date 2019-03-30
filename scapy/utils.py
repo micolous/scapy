@@ -71,6 +71,12 @@ def sane_color(x):
     return r
 
 
+def fd_to_file(fd):
+    if isinstance(fd, six.string_types + (int,)):
+        return open(fd, mode='r+b', buffering=0)
+    return fd
+
+
 def sane(x):
     r = ""
     for i in x:
