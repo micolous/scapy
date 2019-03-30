@@ -1,0 +1,11 @@
+% scapy.modules.crcmod
+
++ crcmod
+
+= crcmod all tests
+
+# This calls out to crcmod's own unittest tests.
+from scapy.modules.crcmod.test import runtests
+t = runtests(exit=None, module='scapy.modules.crcmod.test', argv=['utscapy'])
+
+assert t.result.wasSuccessful()
