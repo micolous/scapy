@@ -435,7 +435,9 @@ class L2Socket(SuperSocket):
     desc = "read/write packets at layer 2 using Linux PF_PACKET sockets"
 
     def __init__(self, iface=None, type=ETH_P_ALL, promisc=None, filter=None,
-                 nofilter=0, monitor=None):
+                 nofilter=0, monitor=None, default_read_size=None):
+        self.default_read_size = (
+            default_read_size if default_read_size else MTU)
         self.iface = conf.iface if iface is None else iface
         self.type = type
         self.promisc = conf.sniff_promisc if promisc is None else promisc
@@ -481,8 +483,10 @@ class L2Socket(SuperSocket):
             set_promisc(self.ins, self.iface, 0)
         SuperSocket.close(self)
 
-    def recv_raw(self, x=MTU):
+    def recv_raw(self, x=None):
         """Receives a packet, then returns a tuple containing (cls, pkt_data, time)"""  # noqa: E501
+        if x is None:
+            x = self.default_read_size
         pkt, sa_ll = self.ins.recvfrom(x)
         if self.outs and sa_ll[2] == socket.PACKET_OUTGOING:
             return None, None, None
@@ -512,7 +516,7 @@ class L2ListenSocket(L2Socket):
 class L3PacketSocket(L2Socket):
     desc = "read/write packets at layer 3 using Linux PF_PACKET sockets"
 
-    def recv(self, x=MTU):
+    def recv(self, x=None):
         pkt = SuperSocket.recv(self, x)
         if pkt and self.lvl == 2:
             pkt = pkt.payload
