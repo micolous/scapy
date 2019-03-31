@@ -790,6 +790,300 @@ Two methods are hooks to be overloaded:
 
 * The ``master_filter()`` method is called each time a packet is sniffed and decides if it is interesting for the automaton. When working on a specific protocol, this is where you will ensure the packet belongs to the connection you are being part of, so that you do not need to make all the sanity checks in each transition.
 
+.. _packetizers:
+
+Packetizers
+===========
+
+Packetizers are Scapy's interface for taking a stream of bytes, and dividing it
+into packets, and also converting packets into a stream of bytes. They
+implement at least the `medium access control (MAC)`__ sublayer of the `data
+link layer`__.
+
+__ https://en.wikipedia.org/wiki/Medium_access_control
+__ https://en.wikipedia.org/wiki/Data_link_layer
+
+In an Ethernet network, your network card's `PHY`__ is the interface between the
+analogue domain of Ethernet's line modulation and the digital domain of
+link-layer packet signalling used by the MAC. Modern network cards integrate the
+functions of the PHY and MAC into a `single package`__. Your operating system
+normally only sees packets, and not the analogue electrical signals.
+
+__ https://en.wikipedia.org/wiki/PHY_(chip)
+__ https://en.wikipedia.org/wiki/System_in_package
+
+By comparison, serial ports are presented to the operating system as a
+bidirectional stream of bytes. Protocols like :abbr:`HDLC (High-level Data Link
+Control)` (used by :abbr:`PPP (Point to Point Protocol)`) and :abbr:`SLIP
+(Serial Line IP)` define framing semantics for serial links. They enable the
+transmission and reception of *packets*, rather than just *bytes*.
+
+These protocols typically define an end-of-frame sequence (to delimit frames),
+and an escape sequence (for handling frames that contain end-of-frame
+sequences). They might also define a start-of-frame sequence or escapes for
+additional reserved characters.
+
+More sophisticated protocols might implement error-correction codes or
+checksums.
+
+While these sorts of serial links are typically obsolete for the purposes of
+providing network access to computers, these protocols have found new life in
+embedded electronics.
+
+Additionally, packet capture files (such as ``libpcap``) could be called a form
+of data layer -- the format defines a mechanism to delimit multiple packets
+within a single file.
+
+.. seealso::
+
+    :doc:`PPP (Point to Point Protocol) <layers/ppp>`
+        Documentation of the :py:mod:`scapy.layers.ppp` module.
+
+    :doc:`SLIP (Serial Line IP) <layers/slip>`
+        Documentation of the :py:mod:`scapy.layers.slip` module.
+
+Working with Packetizers
+------------------------
+
+Scapy's Packetizer interface resides in ``scapy/packetizer.py``.
+
+.. py:class:: Packetizer()
+
+    This is an abstract class that all Packetizers inherit from. It buffers
+    incoming data, and yields whenever there is a complete frame of data.
+
+    Subclasses implement frame decoding and encoding of frame bytes.
+
+    If you're defining a protocol that contains simple delimiters and escaping,
+    it can probably be implemented as a subclass of :py:class:`SLIPPacketizer`.
+
+    The :py:class:`Packetizer` API defines two internal-only fields:
+
+    .. py:attribute:: buffer
+
+        A :py:class:`bytearray` used as a :abbr:`FIFO (First In First Out)`
+        queue for incomplete packets.
+
+        Interactions with it must only be done with the
+        :py:attr:`_buffer_lock`, which is acquired for subclasses by
+        :py:meth:`data_received` for use in :py:meth:`decode_frame` and
+        :py:meth:`find_end`.
+
+    .. py:attribute:: _buffer_lock
+
+        A :py:class:`threading.Lock` which protects use of :py:attr:`buffer`.
+        :py:class:`Packetizer` subclasses do not interact with this directly.
+
+    :py:class:`Packetizer` requires the implementation of three methods:
+
+    .. py:method:: find_end() -> int
+
+        Returns an integer with the length of the frame at the start of
+        :py:attr:`buffer`, or ``-1`` if there is no complete packet available.
+
+        In the event of desynchronisation (a packet has been unexpectedly
+        terminated), the partial packet must be counted.
+
+        The returned value must include the length of any end-of-packet marker.
+
+        This is an internal method, and only called by
+        :py:meth:`data_received` (which handles use of the
+        :py:attr:`_buffer_lock`).
+
+    .. py:method:: decode_frame(length: int) -> bytes or None
+
+        Decodes a frame at the start of :py:attr:`buffer` with a given length
+        (passed from :py:meth:`find_end`).
+
+        Any start or ending makers must be removed, and bytes must be
+        unescaped.
+
+        If the frame is invalid and should be skipped, return ``None``.
+
+        This is an internal method, and only called by
+        :py:meth:`data_received` (which handles use of the
+        :py:attr:`_buffer_lock`).
+
+    .. py:method:: encode_frame(packet: Packet or bytes) -> bytes
+
+        Encodes a :py:class:`Packet` into :py:class:`bytes` that can be
+        transmitted on the wire.
+
+        By default, this converts a :py:class:`Packet` into :py:class:`bytes`
+        using :py:func:`raw`.
+
+        Subclasses should call the base method so that they always get
+        :py:class:`bytes` as a parameter:
+
+        .. code-block: python3
+
+            def encode_frame(self, pkt):
+                pkt = super(MyPacketizer, self).encode_frame(pkt)
+                # pkt is now a bytes
+
+        This may be used by external callers.  It must not use
+        :py:attr:`buffer` or :py:attr:`_buffer_lock`.
+        :py:meth:`PacketizerSocket.send` presumes this method has no
+        side-effects.
+
+    In addition to :py:meth:`encode_frame`, Packetizer some methods for
+    callers:
+
+    .. py:method:: clear_buffer() -> None
+
+        Deletes the contents of the :py:attr:`buffer`, as well as any partial
+        data that happens to be inside.
+
+        Blocks on acquiring the :py:attr:`_buffer_lock`.
+
+    .. py:method:: data_received(data: bytes) \
+                        -> generator[tuple[bytes, float]]
+
+        Processes incoming data.  Whenever you get new data on the link, call
+        this method.
+
+        This yields tuples of ``(frame_bytes, time)``, whenever there is a
+        complete and valid frame available.
+
+        Blocks on acquiring the :py:attr:`_buffer_lock`.
+
+    .. py:method:: make_socket(fd: file, \
+                               [packet_class: Type[Packet],] \
+                               [default_read_size: int]) \
+                               -> PacketizerSocket
+
+        See :py:class:`PacketizerSocket` constructor.
+
+.. py:class:: PacketizerSocket(fd: file, \
+                               packetizer: Packetizer, \
+                               [packet_class: Type[Packet],] \
+                               [default_read_size: int = 256])
+
+    This implements the :py:class:`SuperSocket` interface (via
+    :py:class:`SimpleSocket`), allowing :py:meth:`recv_raw`,
+    :py:meth:`recv` and :py:meth:`send` calls to operate on ``fd`` via
+    :py:class:`Packetizer`.
+
+    :param file fd: A :py:class:`file`-like object to read packets from, and
+        write packets to.
+
+    :param Packetizer packetizer: An instance of a :py:class:`Packetizer` to use
+        when reading and writing Packets on the ``fd``.
+
+    :param Type[Packet] packet_class: A type reference to a :py:class:`Packet`.
+        If not specified, :py:class:`Raw` packets will be returned.
+
+    :param int default_read_size: The default number of bytes to read in a
+        :py:meth:`SuperSocket.recv` or :py:meth:`SuperSocket.recv_raw` call
+        with no parameter. Defaults to 256.
+
+    :raises TypeError: if ``packetizer`` does not implement
+        :py:class:`Packetizer`.
+
+    .. py:attribute:: promisc
+
+        Streams are implicitly promiscuous interfaces (even if only connected
+        between two hosts), so always set to True.
+
+        This is needed to support :py:meth:`SuperSocket.sniff`.
+
+    .. py:attribute:: packet_class
+
+        A type reference to a :py:class:`Packet` to be used by packets read
+        from the :py:class:`PacketizerSocket`.
+
+        May be changed by callers.  Unlike the constructor parameter, must not
+        be set to None.
+
+    .. py:attribute:: packetizer
+
+        The :py:class:`Packetizer` in use for reading packets from, and writing
+        packets to the underlying ``fd``.
+
+    .. py:attribute:: _packet_queue
+
+        Private :abbr:`FIFO (First In First Out)` :py:class:`Queue` for
+        buffering packets in a ``read``.
+
+    .. py:method:: recv_raw([x: int]) -> tuple[Type[Packet], bytes, float] or \
+                                         tuple[None, None, None]
+
+        If there is any packet in the :py:attr:`_packet_queue` (see
+        :py:meth:`has_packets`), pops the oldest item in it immediately.
+
+        Otherwise, reads ``x`` bytes from the underlying ``fd``, and pushes it
+        :py:meth:`Packetizer.data_received`, then pushes any packets received
+        into the :py:meth:`_packet_queue`.
+
+        If reads to the ``fd`` are blocking, this method may block. However,
+        even blocking reads may always get an incomplete packet, so
+        :py:class:`Packetizer.data_received` may not yield any complete
+        packets.
+
+        If there is no complete packet available (either through a read or in
+        the :py:attr:`_packet_queue`), this returns a tuple of Nones.
+
+        :param int x: Optional number of bytes to read from the ``fd``.  If not
+            specified, :py:attr:`~SuperSocket.default_read_size` is used.
+        :rtype: tuple[Type[Packet], bytes, float] or tuple[None, None, None]
+        :returns: A reference to the type of the Packet, the bytes in this
+                  packet, and the time it was received, or a tuple of Nones if
+                  no complete packet could be read.
+
+    .. py:method:: recv([x: int]) -> Packet or None
+
+        Same as :py:meth:`SuperSocket.recv`.
+
+        .. note::
+
+            This can block if reads of the ``fd`` are blocking.  See
+            :py:meth:`recv_raw` for details.
+
+        :param int x: Optional number of bytes to read from the ``fd``.  If not
+            specified, :py:attr:`~SuperSocket.default_read_size` is used.
+        :returns: The next available packet from :py:meth:`recv_raw`.
+        :rtype: Packet or None
+
+    .. py:method:: send(x: Packet or bytes) -> None
+
+        Writes a :py:class:`Packet` to the underlying ``fd``.
+
+        If ``x`` is a :py:class:`bytes`, it will be encoded
+        (:py:meth:`~Packetizer.encode_frame`) and written to the ``fd``.
+
+        If ``x`` is an instance of :py:attr:`packet_class`, it will be encoded
+        and written to the ``fd``.
+
+        If ``x`` is **not** an instance of :py:attr:`packet_class`, it will be
+        added as a payload of :py:attr:`packet_class`, then encoded and written
+        to the ``fd``.  This differs from :py:meth:`SuperSocket.send`.
+
+        Like :py:meth:`SuperSocket.send`, if ``x`` defines a ``sent_time``
+        attribute, it will be set with a :py:class:`float` representing the
+        current epoch time (:py:func:`time.time`).
+
+        .. note::
+
+            This method assumes that the implementation of
+            :py:meth:`Packetizer.encode_frame` has no side-effects.
+
+        :param x: a packet to send to the underlying ``fd``.
+        :type x: Packet or bytes
+
+    .. py:method:: has_packets() -> bool
+
+        :py:class:`PacketizerSocket` extension, returns True if there are
+        packets waiting in the internal queue that can be read without a read to
+        the underlying ``fd``.
+
+    .. py:staticmethod:: select(sockets: list[SuperSocket], \
+                                [remain: int]) -> tuple(list[SuperSocket], ?)
+
+        Extension to :py:meth:`SuperSocket.select`, will check for any
+        :py:class:`PacketizerSocket` in ``sockets``, and return them if
+        :py:meth:`has_packets` is True.
+
+        Otherwise, delegates to :py:meth:`SuperSocket.select`.
 
 PipeTools
 =========

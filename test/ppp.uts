@@ -1,0 +1,23 @@
+% PPP tests (scapy.layers.ppp)
+
++ PPPPacketizer
+
+= Handle simple packet
+
+p = PPPPacketizer()
+d = b"~\xff}#\xc0!}!}!} }4}\"}&} } } } }%}&\xc3y\x9d3}'}\"}(}\"I\xde~"
+
+pkts = list(p.data_received(d))
+assert len(pkts) == 1
+bytes_hex(pkts[0][0])
+
+pkt = HDLC(pkts[0][0])
+
+pkt.show()
+assert pkt[PPP_LCP_Configure].id == 1
+assert pkt[PPP_LCP_Magic_Number_Option].magic_number == 0xc3799d33
+
+assert d == p.encode_frame(pkt)
+assert d == p.encode_frame(pkts[0][0])
+
+

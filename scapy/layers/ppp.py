@@ -9,21 +9,25 @@ PPP (Point to Point Protocol)
 [RFC 1661]
 """
 
+import os
 import struct
+
 from scapy.config import conf
 from scapy.data import DLT_PPP, DLT_PPP_SERIAL, DLT_PPP_ETHER, \
     DLT_PPP_WITH_DIR
-from scapy.compat import orb
+from scapy.compat import chb, orb, raw
 from scapy.packet import Packet, bind_layers
 from scapy.layers.eap import EAP
 from scapy.layers.l2 import Ether, CookedLinux, GRE_PPTP
 from scapy.layers.inet import IP
 from scapy.layers.inet6 import IPv6
+from scapy.layers.slip import SLIPPacketizer
 from scapy.fields import BitField, ByteEnumField, ByteField, \
     ConditionalField, FieldLenField, IntField, IPField, \
     PacketListField, PacketField, ShortEnumField, ShortField, \
     StrFixedLenField, StrLenField, XByteField, XShortField, XStrLenField
-from scapy.modules import six
+from scapy.modules import six, crcmod
+from scapy.utils import fd_to_file
 
 
 class PPPoE(Packet):
@@ -873,6 +877,125 @@ class PPP_CHAP_ChallengeResponse(PPP_CHAP):
             )
         else:
             return super(PPP_CHAP_ChallengeResponse, self).mysummary()
+
+
+# PPP Octet-stuffed framing (RFC 1662 section 4)
+# https://tools.ietf.org/html/rfc1662#section-4
+class PPPPacketizer(SLIPPacketizer):
+    FCS_MODE_NONE = 0
+    """Don't include any FCS (checksum)"""
+    FCS_MODE_CRC16 = 1
+    """Include CRC16 X.25 checksum (section C.2)"""
+    FCS_MODE_CRC32 = 2
+    """Include CRC32 checksum (section C.3)"""
+
+    def __init__(self, fcs_mode=FCS_MODE_CRC16, fcs_check=False):
+        """
+        PPP octet-stuffed framing (RFC1662 section 4) implementation.
+
+        :param fcs_mode: Frame Check Sequence (CRC) operation mode, one of the
+                         ``FCS_MODE_*`` constants.
+        :param fcs_check: True (default) to drop frames with invalid FCS.
+        """
+        super(PPPPacketizer, self).__init__(
+            esc=b'\x7d',
+            esc_esc=b'\x5d',
+            end=b'\x7e',
+            end_esc=b'\x5e',
+        )
+
+        self.fcs_mode = fcs_mode
+        self.fcs_check = bool(fcs_check)
+        self.fcs_errors = 0
+
+    def handle_escape(self, i, end_msg_pos):
+        # Per section 4.2 (Transparency)
+        b = self.buffer[i]
+        return (i + 1), chb(b ^ 0x20)
+
+    def decode_frame(self, length):
+        o = SLIPPacketizer.decode_frame(self, length)
+        if o:
+            # Handle FCS
+            if self.fcs_mode == PPPPacketizer.FCS_MODE_NONE:
+                if len(o) < 2:  # section 4.3, invalid frames
+                    return
+
+            elif self.fcs_mode == PPPPacketizer.FCS_MODE_CRC16:
+                if len(o) < 4:  # section 4.3, invalid frames
+                    return
+
+                fcs, o = o[-2:], o[:-2]
+                if self.fcs_check:
+                    fcs = struct.unpack("!H", fcs)[0]
+                    actual_fcs = crcmod.crc_x25(o)
+                    if fcs != actual_fcs:
+                        self.fcs_errors += 1
+                        return
+
+            elif self.fcs_mode == PPPPacketizer.FCS_MODE_CRC32:
+                if len(o) < 6:  # section 4.3, invalid frames
+                    return
+
+                fcs, o = o[-4:], o[:-4]
+                if self.fcs_check:
+                    fcs = struct.unpack("!I", fcs)[0]
+                    actual_fcs = crcmod.crc_32(o)
+                    if fcs != actual_fcs:
+                        self.fcs_errors += 1
+                        return
+
+            else:
+                raise TypeError("fcs_mode is invalid")
+
+        return o
+
+    def encode_frame(self, pkt):
+        """Encodes a packet in binary form with PPP."""
+        d = bytearray(raw(pkt))
+
+        # Calculate FCS
+        if self.fcs_mode == PPPPacketizer.FCS_MODE_NONE:
+            # Explicitly handle this case
+            pass
+        elif self.fcs_mode == PPPPacketizer.FCS_MODE_CRC16:
+            d.extend(struct.pack("<H", crcmod.crc_x25(d)))
+        elif self.fcs_mode == PPPPacketizer.FCS_MODE_CRC32:
+            d.extend(struct.pack("<I", crcmod.crc_32(d)))
+        else:
+            raise TypeError("fcs_mode is invalid")
+
+        o = bytearray()
+        o.extend(self.end)
+        for c in d:
+            # TODO: Handle Async-Control-Character-Map
+            if c < 0x20 or c in self.end or c in self.esc:
+                o.extend(self.esc)
+                c ^= 0x20
+            o.append(c)
+
+        o.extend(self.end)
+        return bytes(o)
+
+
+def ppp_socket(fd, default_read_size=None):
+    """PPP socket around a given file-like object."""
+    fd = fd_to_file(fd)
+    return PPPPacketizer().make_socket(fd, HDLC, default_read_size)
+
+
+def ppp_pty(default_read_size=None):
+    """
+    Makes a PPP virtual PTY.
+
+    Note: Consider using TunTapInterface rather than this method.
+    """
+
+    parent_fd, child_fd = os.openpty()
+    child_fn = os.ttyname(child_fd)
+    parent_socket = ppp_socket(parent_fd, default_read_size)
+
+    return parent_socket, child_fn, child_fd
 
 
 bind_layers(PPPoED, PPPoED_Tags, type=1)
