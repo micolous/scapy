@@ -91,7 +91,11 @@ class PacketizerSocket(SimpleSocket):
             raise TypeError('packetizer must implement Packetizer interface')
 
         self.packet_class = packet_class or conf.raw_layer
-        packet_classes = list(packet_classes) or [self.packet_class]
+        if packet_classes:
+            packet_classes = list(packet_classes)
+        else:
+            packet_classes = [self.packet_class]
+
         if self.packet_class not in packet_classes:
             packet_classes.append(self.packet_class)
         if binary_type not in packet_classes:

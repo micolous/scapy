@@ -997,7 +997,7 @@ class PPPPacketizerSocket(PacketizerSocket):
 
     def send(self, x):
         if isinstance(x, Packet):
-            if not x.haslayer(PPP) or x.haslayer(PPP_):
+            if not x.haslayer(PPP) and not x.haslayer(PPP_):
                 x = PPP()/x
 
             ppp = x[PPP] if x.haslayer(PPP) else x[PPP_]
