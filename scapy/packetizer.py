@@ -80,7 +80,7 @@ class PacketizerSocket(SimpleSocket):
 
     Full documentation in docs/scapy/advanced_usage.rst.
     """
-    def __init__(self, fd, packetizer, packet_class=None,
+    def __init__(self, fd, packetizer, packet_class=None, packet_classes=None,
                  default_read_size=None):
         # This allows subclasses to pass "None" to accept our default.
         default_read_size = (default_read_size if default_read_size is not None
@@ -91,6 +91,15 @@ class PacketizerSocket(SimpleSocket):
             raise TypeError('packetizer must implement Packetizer interface')
 
         self.packet_class = packet_class or conf.raw_layer
+        packet_classes = list(packet_classes) or [self.packet_class]
+        if self.packet_class not in packet_classes:
+            packet_classes.append(self.packet_class)
+        if binary_type not in packet_classes:
+            packet_classes.append(binary_type)
+        if bytearray not in packet_classes:
+            packet_classes.append(bytearray)
+        # isinstance expects a tuple
+        self.packet_classes = tuple(packet_classes)
         self.packetizer = packetizer
         self._packet_queue = Queue()
 
@@ -119,7 +128,7 @@ class PacketizerSocket(SimpleSocket):
             return None, None, None
 
     def send(self, x):
-        if not isinstance(x, (self.packet_class, binary_type)):
+        if not isinstance(x, self.packet_classes):
             x = self.packet_class() / x
 
         sx = raw(x)

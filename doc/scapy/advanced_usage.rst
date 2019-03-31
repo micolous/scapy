@@ -957,6 +957,7 @@ Scapy's Packetizer interface resides in ``scapy/packetizer.py``.
 .. py:class:: PacketizerSocket(fd: file, \
                                packetizer: Packetizer, \
                                [packet_class: Type[Packet],] \
+                               [packet_classes: list[Type[Packet]],] \
                                [default_read_size: int = 256])
 
     This implements the :py:class:`SuperSocket` interface (via
@@ -968,10 +969,18 @@ Scapy's Packetizer interface resides in ``scapy/packetizer.py``.
         write packets to.
 
     :param Packetizer packetizer: An instance of a :py:class:`Packetizer` to use
-        when reading and writing Packets on the ``fd``.
+        when reading and writing Packets on the ``fd``, see
 
-    :param Type[Packet] packet_class: A type reference to a :py:class:`Packet`.
-        If not specified, :py:class:`Raw` packets will be returned.
+    :param packet_class: A type reference to a :py:class:`Packet`. If not
+        specified, :py:class:`Raw` packets will be returned. See
+        :py:attr:`packet_class` for more detail.
+    :type packet_class: Type[Packet] or None
+
+    :param packet_classes: A list of other type references to
+        :py:class:`Packet` that are acceptable to send without modification.
+        ``packet_class``, :py:class:`bytes` and :py:class:`bytearray` will be
+        added to this list implicitly.
+    :type packet_classes: list[Type[Packet]] or None
 
     :param int default_read_size: The default number of bytes to read in a
         :py:meth:`SuperSocket.recv` or :py:meth:`SuperSocket.recv_raw` call
@@ -990,10 +999,30 @@ Scapy's Packetizer interface resides in ``scapy/packetizer.py``.
     .. py:attribute:: packet_class
 
         A type reference to a :py:class:`Packet` to be used by packets read
-        from the :py:class:`PacketizerSocket`.
+        from the :py:class:`PacketizerSocket`, and for stacking in
+        :py:meth:`send`.
 
-        May be changed by callers.  Unlike the constructor parameter, must not
-        be set to None.
+        May be changed by callers. Changing this value has effect:
+
+          * from the next packet read by :py:meth:`recv_raw` or
+            :py:meth:`recv`, even if the packet was in the
+            :py:attr:`_packet_queue` prior to the change
+          * from the next packet sent by :py:meth:`send`
+
+        This does **not** automatically update :py:attr:`packet_classes`.
+
+        Unlike the constructor parameter, must not be set to None.
+
+    .. py:attribute:: packet_classes
+
+        A list of type references to :py:class:`Packet`s that are acceptable to
+        send without modification in :py:meth:`send`.
+
+        This does **not** automatically update if :py:attr:`packet_class` has
+        changed.
+
+        Unlike the constructor parameter, must not be set to None, and must be
+        a tuple.
 
     .. py:attribute:: packetizer
 
@@ -1048,11 +1077,13 @@ Scapy's Packetizer interface resides in ``scapy/packetizer.py``.
 
         Writes a :py:class:`Packet` to the underlying ``fd``.
 
-        If ``x`` is a :py:class:`bytes`, it will be encoded
-        (:py:meth:`~Packetizer.encode_frame`) and written to the ``fd``.
+        If ``x`` is a :py:class:`bytes` or :py:class:`bytearray`, it will be
+        encoded (:py:meth:`~Packetizer.encode_frame`) and written to the
+        ``fd``.
 
-        If ``x`` is an instance of :py:attr:`packet_class`, it will be encoded
-        and written to the ``fd``.
+        If ``x`` is an instance of anything appearing in
+        :py:attr:`packet_classes`, it will be encoded and written to the
+        ``fd``.
 
         If ``x`` is **not** an instance of :py:attr:`packet_class`, it will be
         added as a payload of :py:attr:`packet_class`, then encoded and written
