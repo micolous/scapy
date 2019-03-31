@@ -353,3 +353,37 @@ saved_conf_prog_tcpdump = conf.prog.tcpdump
 conf.prog.tcpdump = "does_not_exist"
 assert _check_tcpdump() == False
 conf.prog.tcpdump = saved_conf_prog_tcpdump
+
+= Test slattach with SLIP
+~ linux needs_root slip
+
+def sp_call(*args):
+    assert subprocess.check_call(args) == 0
+
+# Setup and check environment
+_ = subprocess.call(["modprobe", "slip"])
+# Check for symbol, in case `slip` module was compiled in to the kernel, rather
+# than a module.
+sp_call("grep", "-q", "slip_open", "/proc/kallsyms")
+sp_call("slattach", "-V")
+
+remote = '192.0.2.2'
+local = '192.0.2.1'
+
+echo = (IP(src=local, dst=remote)/
+        ICMP(type='echo-request')/
+        Raw(b'hello!'))
+fuzz(echo[ICMP], 1)
+
+s, child_fn, _ = slip_pty()
+try:
+    sp_call("slattach", "-he", child_fn)
+    sp_call("ip", "addr",
+            "change", remote + "/32", "peer", local, "dev", "sl0")
+    sp_call("ip", "link", "set", "sl0", "up")
+    ans, uans = srsloop(s, [echo], count=3)
+    assert len(ans) == 3
+    assert len(uans) == 0
+finally:
+    # tear down
+    s.close()
