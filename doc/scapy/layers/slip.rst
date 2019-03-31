@@ -241,12 +241,12 @@ protocols, and handles much of the heavy lifting for you!
         If an escape sequence for the protocol would push beyond the end of the
         buffer, then:
 
-          * the entire message read may be stopped by returning
-            ``(end_msg_pos, None)``
+          * the entire message read may be stopped by returning None as the
+            second element of the tuple: ``(i, None)``
 
           * the escape character can be ignored (treating the next character as
-            a regular character by returning ``i`` unmodified with
-            ``(i, None)``
+            a regular character by returning ``i`` unmodified and a 0-byte long
+            :class:`bytes`:  ``(i, b'')``
 
         :param int i: byte offset of the current position in the buffer
         :param int end_msg_pos: byte offset of the end of the current message

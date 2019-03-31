@@ -126,8 +126,7 @@ class SLIPPacketizer(Packetizer):
         else:
             # Unknown sequence (protocol violation).
             # "leave the byte alone" per RFC
-            i += 1
-            o = self.esc
+            o = b''
 
         if i >= end_msg_pos:
             # buffer overrun

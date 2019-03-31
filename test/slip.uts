@@ -1,5 +1,16 @@
 % Serial Line IP tests (scapy.layers.slip)
 
++ Tools
+
+= ExpectException
+
+def expect_exception(e, c):
+    try:
+        c()
+        return False
+    except e:
+        return True
+
 + SLIPPacketizer
 
 = Encode and decode a SLIP packet that contains escapes
@@ -40,6 +51,50 @@ pkts = list(p.data_received(b' now complete!\300Incomplete more'))
 assert len(pkts) == 1
 assert pkts[0][0] == b'Incomplete message now complete!'
 
+= Unknown or premature escapes
+
+p = SLIPPacketizer()
+d = b'Message \3331\300Message 2\333\300Message 3\333\300'
+
+pkts = list(p.data_received(d))
+assert len(pkts) == 3
+assert pkts[0][0] == b'Message 1'
+assert pkts[1][0] == b'Message 2'
+assert pkts[2][0] == b'Message 3'
+
+
++ Customisations
+
+= SLIPPacketizer invalid args
+
+expect_exception(ValueError, lambda: SLIPPacketizer(esc_esc=None))
+expect_exception(ValueError, lambda: SLIPPacketizer(esc=None))
+expect_exception(ValueError, lambda: SLIPPacketizer(end_esc=None))
+expect_exception(ValueError, lambda: SLIPPacketizer(end=None))
+expect_exception(ValueError, lambda: SLIPPacketizer(start=b'\xff'))
+expect_exception(ValueError, lambda: SLIPPacketizer(start_esc=b'\xfe'))
+
+= Start of frame: simple
+
+p = SLIPPacketizer(start=b'\310', start_esc=b'\336')
+d = b'\310Message 1\300\310Message 2\300'
+
+pkts = list(p.data_received(d))
+assert len(pkts) == 2
+assert pkts[0][0] == b'Message 1'
+assert pkts[1][0] == b'Message 2'
+
+= Start of frame: Encode and decode a SLIP packet that contains escapes
+
+p = SLIPPacketizer(start=b'\310', start_esc=b'\336')
+d = b'Hell\310o, \333w\334o\300rld'
+de = b'\310Hell\333\336o, \333\335w\334o\333\334rld\300'
+
+assert de == p.encode_frame(d)
+
+pkts = list(p.data_received(de))
+assert len(pkts) == 1
+assert pkts[0][0] == d
 
 + PacketizerSocket
 
