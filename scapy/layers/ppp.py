@@ -15,7 +15,7 @@ import struct
 from scapy.config import conf
 from scapy.data import DLT_PPP, DLT_PPP_SERIAL, DLT_PPP_ETHER, \
     DLT_PPP_WITH_DIR
-from scapy.compat import chb, orb, raw
+from scapy.compat import chb, orb
 from scapy.error import warning
 from scapy.packet import Packet, bind_layers
 from scapy.packetizer import Packetizer, PacketizerSocket
@@ -998,7 +998,7 @@ class PPPPacketizerSocket(PacketizerSocket):
     def send(self, x):
         if isinstance(x, Packet):
             if not x.haslayer(PPP) and not x.haslayer(PPP_):
-                x = PPP()/x
+                x = PPP() / x
 
             ppp = x[PPP] if x.haslayer(PPP) else x[PPP_]
 
@@ -1008,15 +1008,15 @@ class PPPPacketizerSocket(PacketizerSocket):
                     x = ppp
             else:
                 if x == ppp:
-                    x = HDLC()/x
+                    x = HDLC() / x
 
             if self.enable_pfc:
                 if isinstance(ppp, PPP) and ppp.proto < 0x100:
                     # We can use PFC for this packet
-                    ppp = PPP_(proto=ppp.proto)/ppp.payload
+                    ppp = PPP_(proto=ppp.proto) / ppp.payload
             else:
                 if isinstance(ppp, PPP_):
-                    ppp = PPP(proto=ppp.proto)/ppp.payload
+                    ppp = PPP(proto=ppp.proto) / ppp.payload
 
             if isinstance(x, HDLC) and ppp != x.payload:
                 x.remove_payload()

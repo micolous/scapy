@@ -87,7 +87,8 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
         if self.closed:
             return
         self.closed = True
-        if hasattr(self, "outs") and self.outs and (not hasattr(self, "ins") or self.ins != self.outs):
+        if hasattr(self, "outs") and self.outs and (
+                not hasattr(self, "ins") or self.ins != self.outs):
             fn = -1
             try:
                 fn = self.outs.fileno()
