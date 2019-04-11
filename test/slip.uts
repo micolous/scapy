@@ -130,13 +130,17 @@ del slip, f, buf, t
 def sp_call(*args):
     assert subprocess.check_call(args) == 0
 
+def sp_expect_eversion(*args):
+    # E_VERSION = 5
+    assert subprocess.call(args) in (0, 5)
+
 def sp_expect_fail(*args):
     assert subprocess.call(args) != 0
 
 # Setup and check environment
 
 # Check for `slattach`, as it's not always available, and fail early.
-sp_call("slattach", "-V")
+sp_expect_eversion("slattach", "-V")
 
 # We expect the interface `sl0` to _not_ exist. Fail early if it's there.
 sp_expect_fail("ip", "link", "show", "sl0")
