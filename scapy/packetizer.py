@@ -109,27 +109,35 @@ class PacketizerSocket(SimpleSocket):
 
         self.promisc = True
 
-    def recv_raw(self, x=None):
-        if x is None:
-            x = self.default_read_size
+    def _get_nowait(self):
+        """
+        Gets a packet from the queue, if it is available.
 
+        Returns ``(None, None, None)`` if no packet is available.
+
+        This is a private method, only intended for use by
+        :py:meth:`PacketizerSocket.recv_raw`.
+        """
         try:
             pkt, ts = self._packet_queue.get_nowait()
             return self.packet_class, pkt, ts
         except Empty:
-            # Well, looks like we need to do some work...
-            pass
+            return None, None, None
+
+    def recv_raw(self, x=None):
+        if x is None:
+            x = self.default_read_size
+
+        ret = self._get_nowait()
+        if ret[1]:
+            return ret
 
         # read some bytes
         for p in self.packetizer.data_received(self.ins.read(x)):
             self._packet_queue.put(p)
 
         # Do we have some packets now?
-        try:
-            pkt, ts = self._packet_queue.get_nowait()
-            return self.packet_class, pkt, ts
-        except Empty:
-            return None, None, None
+        return self._get_nowait()
 
     def send(self, x):
         if not isinstance(x, self.packet_classes):
