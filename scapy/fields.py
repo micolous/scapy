@@ -1419,6 +1419,8 @@ class BitField(Field):
 
     def __init__(self, name, default, size):
         Field.__init__(self, name, default)
+        if callable(size):
+            size = size(self)
         self.rev = size < 0
         self.size = abs(size)
 
