@@ -968,7 +968,7 @@ class PPPPacketizer(SLIPPacketizer):
         o.extend(self.end)
         for c in d:
             # TODO: Handle Async-Control-Character-Map
-            if c < 0x20 or c in self.end or c in self.esc:
+            if c < 0x20 or chb(c) in self.end or chb(c) in self.esc:
                 o.extend(self.esc)
                 c ^= 0x20
             o.append(c)

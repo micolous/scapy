@@ -20,8 +20,16 @@ assert not pkt.haslayer(PPP_)
 assert pkt[PPP_LCP_Configure].id == 1
 assert pkt[PPP_LCP_Magic_Number_Option].magic_number == 0xc3799d33
 
-assert d == p.encode_frame(pkt)
-assert d == p.encode_frame(pkts[0][0])
+d
+d2 = p.encode_frame(pkt)
+d2
+assert d == d2
+
+d3 = p.encode_frame(pkts[0][0])
+d3
+assert d == d3
+
+del d, d2, d3
 
 = Handle wrong FCS
 
@@ -63,7 +71,7 @@ def bio_ppp(buf=b''):
     f = BytesIO(buf)
     if not hasattr(f, 'getbuffer'):
         # py2 compat
-        f.getbuffer = lambda: f.getValue()
+        f.getbuffer = lambda: f.getvalue()
     ppp = ppp_socket(f)
     assert isinstance(ppp, PPPPacketizerSocket)
     return f, ppp

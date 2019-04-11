@@ -110,7 +110,7 @@ class SLIPPacketizer(Packetizer):
 
                 o.extend(r)
 
-        return o
+        return bytes(o)
 
     def handle_escape(self, i, end_msg_pos):
         """Called after an escape sequence was read."""
