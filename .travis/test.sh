@@ -7,8 +7,6 @@ then
   then
     # Linux non root
     UT_FLAGS+=" -K manufdb"
-  else
-    PATH="${PATH}:/sbin:/usr/sbin"
   fi
   # pypy
   if python --version 2>&1 | grep -q PyPy
