@@ -73,7 +73,13 @@ def sane_color(x):
 
 def fd_to_file(fd):
     if isinstance(fd, six.string_types + (int,)):
-        return open(fd, mode='r+b', buffering=0)
+        if six.PY2 and isinstance(fd, int):
+            # Python 2 requires that file descriptors as int are opened with
+            # fdopen, and it also takes 'bufsize' as a parameter, not
+            # 'buffering'.
+            return os.fdopen(fd, "r+b", 0)
+
+        return open(fd, mode="r+b", buffering=0)
     return fd
 
 
