@@ -21,7 +21,7 @@ from io import BytesIO
 iface0 = "vcan0"
 iface1 = "vcan1"
 
-class MockCANSocket(SuperSocket):
+class MockCANSocket(SimpleSocket):
     nonblocking_socket = True
     def __init__(self, rcvd_queue=None):
         self.rcvd_queue = Queue()
@@ -29,7 +29,8 @@ class MockCANSocket(SuperSocket):
         if rcvd_queue is not None:
             for c in rcvd_queue:
                 self.rcvd_queue.put(c)
-    def recv_raw(self, x=MTU):
+        super(MockCANSocket, self).__init__(None, None)
+    def recv_raw(self, x=None):
         pkt = bytes(self.rcvd_queue.get(True, 2))
         return CAN, pkt, None
     def send(self, p):

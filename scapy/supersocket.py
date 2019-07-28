@@ -8,17 +8,17 @@ SuperSocket.
 """
 
 from __future__ import absolute_import
+
+from io import UnsupportedOperation
 from select import select, error as select_error
 import errno
-import os
 import socket
-import struct
 import time
 
 from scapy.config import conf
-from scapy.consts import LINUX, DARWIN, WINDOWS
+from scapy.consts import DARWIN, WINDOWS
 from scapy.data import MTU, ETH_P_IP
-from scapy.compat import raw, bytes_encode
+from scapy.compat import raw
 from scapy.error import warning, log_runtime
 import scapy.modules.six as six
 import scapy.packet
@@ -39,10 +39,12 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
     nonblocking_socket = False
     read_allowed_exceptions = ()
 
-    def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0):  # noqa: E501
+    def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM,
+                 proto=0, default_read_size=MTU):  # noqa: E501
         self.ins = socket.socket(family, type, proto)
         self.outs = self.ins
         self.promisc = None
+        self.default_read_size = default_read_size
 
     def send(self, x):
         sx = raw(x)
@@ -53,11 +55,17 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
             pass
         return sent
 
-    def recv_raw(self, x=MTU):
+    def recv_raw(self, x=None):
         """Returns a tuple containing (cls, pkt_data, time)"""
+        if x is None:
+            x = self.default_read_size
+
         return conf.raw_layer, self.ins.recv(x), None
 
-    def recv(self, x=MTU):
+    def recv(self, x=None):
+        if x is None:
+            x = self.default_read_size
+
         cls, val, ts = self.recv_raw(x)
         if not val or not cls:
             return
@@ -82,12 +90,27 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
         if self.closed:
             return
         self.closed = True
-        if getattr(self, "outs", None):
-            if getattr(self, "ins", None) != self.outs:
-                if WINDOWS or self.outs.fileno() != -1:
-                    self.outs.close()
-        if getattr(self, "ins", None):
-            if WINDOWS or self.ins.fileno() != -1:
+        if hasattr(self, "outs") and self.outs and (
+                not hasattr(self, "ins") or self.ins != self.outs):
+            fn = -1
+            try:
+                fn = self.outs.fileno()
+            except (OSError, UnsupportedOperation):
+                # The file descriptor doesn't support fileno
+                pass
+
+            if fn != -1:
+                self.outs.close()
+
+        if hasattr(self, "ins") and self.ins:
+            fn = -1
+            try:
+                fn = self.ins.fileno()
+            except (OSError, UnsupportedOperation):
+                # The file descriptor doesn't support fileno
+                pass
+
+            if fn != -1:
                 self.ins.close()
 
     def sr(self, *args, **kargs):
@@ -109,6 +132,13 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
     def tshark(self, *args, **kargs):
         from scapy import sendrecv
         return sendrecv.tshark(opened_socket=self, *args, **kargs)
+
+    def am(self, cls, *args, **kwargs):
+        """Creates an AnsweringMachine associated with this socket.
+
+        :param cls: A subclass of AnsweringMachine to instantiate
+        """
+        return cls(*args, opened_socket=self, socket=self, **kwargs)
 
     @staticmethod
     def select(sockets, remain=conf.recv_poll_rate):
@@ -144,14 +174,18 @@ class SuperSocket(six.with_metaclass(_SuperSocket_metaclass)):
 class L3RawSocket(SuperSocket):
     desc = "Layer 3 using Raw sockets (PF_INET/SOCK_RAW)"
 
-    def __init__(self, type=ETH_P_IP, filter=None, iface=None, promisc=None, nofilter=0):  # noqa: E501
+    def __init__(self, type=ETH_P_IP, filter=None, iface=None, promisc=None,
+                 nofilter=0, default_read_size=MTU):
+        self.default_read_size = default_read_size
         self.outs = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)  # noqa: E501
         self.outs.setsockopt(socket.SOL_IP, socket.IP_HDRINCL, 1)
         self.ins = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(type))  # noqa: E501
         if iface is not None:
             self.ins.bind((iface, type))
 
-    def recv(self, x=MTU):
+    def recv(self, x=None):
+        if x is None:
+            x = self.default_read_size
         pkt, sa_ll = self.ins.recvfrom(x)
         if sa_ll[2] == socket.PACKET_OUTGOING:
             return None
@@ -194,22 +228,25 @@ class L3RawSocket(SuperSocket):
 class SimpleSocket(SuperSocket):
     desc = "wrapper around a classic socket"
 
-    def __init__(self, sock):
+    def __init__(self, sock, default_read_size=MTU):
         self.ins = sock
         self.outs = sock
+        self.default_read_size = default_read_size
 
 
 class StreamSocket(SimpleSocket):
     desc = "transforms a stream socket into a layer 2"
     nonblocking_socket = True
 
-    def __init__(self, sock, basecls=None):
+    def __init__(self, sock, basecls=None, default_read_size=None):
         if basecls is None:
             basecls = conf.raw_layer
-        SimpleSocket.__init__(self, sock)
+        SimpleSocket.__init__(self, sock, default_read_size)
         self.basecls = basecls
 
-    def recv(self, x=MTU):
+    def recv(self, x=None):
+        if x is None:
+            x = self.default_read_size
         pkt = self.ins.recv(x, socket.MSG_PEEK)
         x = len(pkt)
         if x == 0:
@@ -229,12 +266,14 @@ class StreamSocket(SimpleSocket):
 class SSLStreamSocket(StreamSocket):
     desc = "similar usage than StreamSocket but specialized for handling SSL-wrapped sockets"  # noqa: E501
 
-    def __init__(self, sock, basecls=None):
+    def __init__(self, sock, basecls=None, default_read_size=65535):
+        # default_read_size: 65535 is the maximum length of a TLS record
         self._buf = b""
-        super(SSLStreamSocket, self).__init__(sock, basecls)
+        super(SSLStreamSocket, self).__init__(sock, basecls, default_read_size)
 
-    # 65535, the default value of x is the maximum length of a TLS record
-    def recv(self, x=65535):
+    def recv(self, x=None):
+        if x is None:
+            x = self.default_read_size
         pkt = None
         if self._buf != b"":
             try:
@@ -262,11 +301,11 @@ class SSLStreamSocket(StreamSocket):
         return pkt
 
 
-class L2ListenTcpdump(SuperSocket):
+class L2ListenTcpdump(SimpleSocket):
     desc = "read packets at layer 2 using tcpdump"
 
     def __init__(self, iface=None, promisc=None, filter=None, nofilter=False,
-                 prog=None, *arg, **karg):
+                 prog=None, default_read_size=0xffff, *args, **kwargs):
         self.outs = None
         args = ['-w', '-', '-s', '65535']
         if iface is not None:
@@ -278,7 +317,8 @@ class L2ListenTcpdump(SuperSocket):
             else:
                 args.extend(['-i', iface])
         elif WINDOWS or DARWIN:
-            args.extend(['-i', conf.iface.pcap_name if WINDOWS else conf.iface])  # noqa: E501
+            args.extend(['-i',
+                         conf.iface.pcap_name if WINDOWS else conf.iface])
         if not promisc:
             args.append('-p')
         if not nofilter:
@@ -290,80 +330,9 @@ class L2ListenTcpdump(SuperSocket):
         if filter is not None:
             args.append(filter)
         self.tcpdump_proc = tcpdump(None, prog=prog, args=args, getproc=True)
-        self.ins = PcapReader(self.tcpdump_proc.stdout)
-
-    def recv(self, x=MTU):
-        return self.ins.recv(x)
+        reader = PcapReader(self.tcpdump_proc.stdout)
+        super(L2ListenTcpdump, self).__init__(reader, default_read_size)
 
     def close(self):
         SuperSocket.close(self)
         self.tcpdump_proc.kill()
-
-
-class TunTapInterface(SuperSocket):
-    """A socket to act as the host's peer of a tun / tap interface.
-
-    """
-    desc = "Act as the host's peer of a tun / tap interface"
-
-    def __init__(self, iface=None, mode_tun=None, *arg, **karg):
-        self.iface = conf.iface if iface is None else iface
-        self.mode_tun = ("tun" in self.iface) if mode_tun is None else mode_tun
-        self.closed = True
-        self.open()
-
-    def open(self):
-        """Open the TUN or TAP device."""
-        if not self.closed:
-            return
-        self.outs = self.ins = open(
-            "/dev/net/tun" if LINUX else ("/dev/%s" % self.iface), "r+b",
-            buffering=0
-        )
-        if LINUX:
-            from fcntl import ioctl
-            # TUNSETIFF = 0x400454ca
-            # IFF_TUN = 0x0001
-            # IFF_TAP = 0x0002
-            # IFF_NO_PI = 0x1000
-            ioctl(self.ins, 0x400454ca, struct.pack(
-                "16sH", bytes_encode(self.iface),
-                0x0001 if self.mode_tun else 0x1002,
-            ))
-        self.closed = False
-
-    def __call__(self, *arg, **karg):
-        """Needed when using an instantiated TunTapInterface object for
-conf.L2listen, conf.L2socket or conf.L3socket.
-
-        """
-        return self
-
-    def recv(self, x=MTU):
-        if self.mode_tun:
-            data = os.read(self.ins.fileno(), x + 4)
-            proto = struct.unpack('!H', data[2:4])[0]
-            return conf.l3types.get(proto, conf.raw_layer)(data[4:])
-        return conf.l2types.get(1, conf.raw_layer)(
-            os.read(self.ins.fileno(), x)
-        )
-
-    def send(self, x):
-        sx = raw(x)
-        if hasattr(x, "sent_time"):
-            x.sent_time = time.time()
-        if self.mode_tun:
-            try:
-                proto = conf.l3types[type(x)]
-            except KeyError:
-                log_runtime.warning(
-                    "Cannot find layer 3 protocol value to send %s in "
-                    "conf.l3types, using 0",
-                    x.name if hasattr(x, "name") else type(x).__name__
-                )
-                proto = 0
-            sx = struct.pack('!HH', 0, proto) + sx
-        try:
-            os.write(self.outs.fileno(), sx)
-        except socket.error:
-            log_runtime.error("%s send", self.__class__.__name__, exc_info=True)  # noqa: E501

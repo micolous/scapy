@@ -8,6 +8,7 @@ omit =
     scapy/modules/six.py
     scapy/modules/winpcapy.py
     scapy/modules/ethertypes.py
+    scapy/modules/crcmod/test.py
     # .tox specific path
     .tox/*
     # OS specific paths

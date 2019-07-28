@@ -32,7 +32,7 @@ import scapy.modules.six as six
 import scapy.automaton as automaton
 import six.moves.queue as queue
 from scapy.error import Scapy_Exception, warning, log_loading
-from scapy.supersocket import SuperSocket
+from scapy.supersocket import SimpleSocket, SuperSocket
 from scapy.config import conf
 from scapy.consts import LINUX
 from scapy.contrib.cansocket import PYTHON_CAN
@@ -503,7 +503,7 @@ class ISOTPSession(DefaultSession):
             DefaultSession.on_packet_received(self, rcvd)
 
 
-class ISOTPSoftSocket(SuperSocket):
+class ISOTPSoftSocket(SimpleSocket):
     """
     This class is a wrapper around the ISOTPSocketImplementation, for the
     reasons described below.
@@ -547,7 +547,8 @@ class ISOTPSoftSocket(SuperSocket):
                  rx_separation_time_min=0,
                  padding=False,
                  listen_only=False,
-                 basecls=ISOTP):
+                 basecls=ISOTP,
+                 default_read_size=None):
         """
         Initialize an ISOTPSoftSocket using the provided underlying can socket
 
@@ -573,6 +574,8 @@ class ISOTPSoftSocket(SuperSocket):
             can_socket = CANSocket(can_socket)
         elif isinstance(can_socket, six.string_types):
             raise Scapy_Exception("Provide a CANSocket object instead")
+        if default_read_size is None:
+            default_read_size = 0xffff
 
         self.exsrc = extended_addr
         self.exdst = extended_rx_addr
@@ -591,8 +594,7 @@ class ISOTPSoftSocket(SuperSocket):
             listen_only=listen_only
         )
 
-        self.ins = impl
-        self.outs = impl
+        super(ISOTPSoftSocket, self).__init__(impl, default_read_size)
         self.impl = impl
 
         if basecls is None:
@@ -626,7 +628,7 @@ class ISOTPSoftSocket(SuperSocket):
             raise Scapy_Exception("Timeout")
         return self.basecls, msg, t
 
-    def recv_raw(self, x=0xffff):
+    def recv_raw(self, x=None):
         """Receive a complete ISOTP message, blocking until a message is
         received or the specified timeout is reached.
         If self.timeout is 0, then this function doesn't block and returns the
@@ -635,7 +637,7 @@ class ISOTPSoftSocket(SuperSocket):
         t = time.time()
         return self.basecls, msg, t
 
-    def recv(self, x=0xffff):
+    def recv(self, x=None):
         msg = SuperSocket.recv(self, x)
 
         if hasattr(msg, "src"):
@@ -1375,7 +1377,7 @@ if six.PY3 and LINUX:
         _fields_ = [("ifr_name", ctypes.c_char * 16),
                     ("ifr_ifindex", ctypes.c_int)]
 
-    class ISOTPNativeSocket(SuperSocket):
+    class ISOTPNativeSocket(SimpleSocket):
         desc = "read/write packets at a given CAN interface using CAN_ISOTP " \
                "socket "
         can_isotp_options_fmt = "@2I4B"
@@ -1548,7 +1550,11 @@ if six.PY3 and LINUX:
                      listen_only=False,
                      padding=False,
                      transmit_time=100,
-                     basecls=ISOTP):
+                     basecls=ISOTP,
+                     default_read_size=None):
+            if default_read_size is None:
+                default_read_size = 0xffff
+
             self.iface = conf.contribs['NativeCANSocket']['iface'] \
                 if iface is None else iface
             self.can_socket = socket.socket(socket.PF_CAN, socket.SOCK_DGRAM,
@@ -1573,17 +1579,19 @@ if six.PY3 and LINUX:
                                        self.__build_can_isotp_ll_options())
 
             self.__bind_socket(self.can_socket, iface, sid, did)
-            self.ins = self.can_socket
-            self.outs = self.can_socket
+            super(ISOTPNativeSocket, self).__init__(self.can_socket,
+                                                    default_read_size)
             if basecls is None:
                 warning('Provide a basecls ')
             self.basecls = basecls
 
-        def recv_raw(self, x=0xffff):
+        def recv_raw(self, x=None):
             """
             Receives a packet, then returns a tuple containing
             (cls, pkt_data, time)
             """  # noqa: E501
+            if x is None:
+                x = self.default_read_size
             try:
                 pkt = self.can_socket.recvfrom(x)[0]
             except BlockingIOError:  # noqa: F821
@@ -1600,7 +1608,7 @@ if six.PY3 and LINUX:
             ts = get_last_packet_timestamp(self.can_socket)
             return self.basecls, pkt, ts
 
-        def recv(self, x=0xffff):
+        def recv(self, x=None):
             msg = SuperSocket.recv(self, x)
 
             if hasattr(msg, "src"):

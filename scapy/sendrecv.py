@@ -594,6 +594,17 @@ def srploop(pkts, *args, **kargs):
 srloop(pkts, [prn], [inter], [count], ...) --> None"""
     return __sr_loop(srp, pkts, *args, **kargs)
 
+
+@conf.commands.register
+def srsloop(sock, pkts, *args, **kargs):
+    """
+    Sends a packet on a SuperSocket in loop and prints the answer each time.
+
+    srsloop(socket, pkts, [prn], [inter], [count], ...) --> None
+    """
+    return __sr_loop(sock.sr, pkts, *args, **kargs)
+
+
 # SEND/RECV FLOOD METHODS
 
 
