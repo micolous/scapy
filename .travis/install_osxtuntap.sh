@@ -2,6 +2,9 @@
 # Install Tunnelblick's signed tuntaposx kexts
 # https://sourceforge.net/p/tuntaposx/bugs/28/
 
+# Note: This only works on macOS 10.12 and earlier, and is broken on 10.13:
+# https://github.com/travis-ci/travis-ci/issues/9377
+
 TB_URL="https://tunnelblick.net/release/Tunnelblick_3.8.0_build_5370.dmg"
 TB_DMG="Tunnelblick_3.8.0_build_5370.dmg"
 TB_SHA256="4131ef7ab1b328e0efd62867cb4a35796fa22aaaa160ab478215f56197669925"
