@@ -8,6 +8,8 @@ then
     brew update
     brew install libdnet libpcap
   fi
+
+  ./.travis/install_osxtuntap.sh || exit 1
   exit 0
 fi
 
