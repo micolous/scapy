@@ -26,8 +26,10 @@ sudo cp -r tap-notarized.kext tun-notarized.kext /Library/Extensions/
 popd
 hdiutil detach ${TB_VOL}
 
+chown -R root:wheel /Library/Extensions/tap-notarized.kext /Library/Extensions/tun-notarized.kext
+
 # Load the kexts
-sudo kextload /Library/Extensions/tap-notarized.kext
-sudo kextload /Library/Extensions/tun-notarized.kext
+sudo kextload -v 1 /Library/Extensions/tap-notarized.kext
+sudo kextload -v 1 /Library/Extensions/tun-notarized.kext
 
 ls -la /dev/tap* /dev/tun*
