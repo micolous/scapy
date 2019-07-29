@@ -122,7 +122,7 @@ matrix:
           language: generic
           osx_image: xcode9.2  # macOS 10.12
           env:
-            - TOXENV=py36-bsd_non_root,py36-bsd_root,codecov
+            - TOXENV=py37-bsd_non_root,py37-bsd_root,codecov
 
     allow_failures:
         # Other root tests
