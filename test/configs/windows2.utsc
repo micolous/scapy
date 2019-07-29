@@ -30,6 +30,8 @@
     "ipv6",
     "manufdb",
     "tcpdump",
+    "tap",
+    "tun",
     "tshark"
   ]
 }

@@ -6,7 +6,7 @@
 ############
 + Test bridge_and_sniff() using tap sockets
 
-~ tap linux
+~ tap
 
 = Create two tap interfaces
 
@@ -93,7 +93,7 @@ else:
 ############
 + Test bridge_and_sniff() using tun sockets
 
-~ tun linux not_pcapdnet
+~ tun not_pcapdnet
 
 = Create two tun interfaces
 
@@ -226,7 +226,7 @@ with VEthPair('a_0', 'a_1') as veth_0:
 ############
 + Test arpleak() using a tap socket
 
-~ tap linux tcpdump
+~ tap tcpdump
 
 = Create two tap interfaces
 
