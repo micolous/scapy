@@ -2,13 +2,17 @@
 # Install on osx
 if [ "$TRAVIS_OS_NAME" = "osx" ]
 then
-  brew update
+  # Noisy
+  brew update > /dev/null
+
+  # Needed for 10.12
+  brew install --upgrade python
+  pip3 install tox
+
   if [ ! -z $SCAPY_USE_PCAPDNET ]
   then
     brew install libdnet libpcap
   fi
-  brew install python@3
-  pip3 install tox
 
   ./.travis/install_osxtuntap.sh || exit 1
   exit 0
