@@ -27,7 +27,7 @@ popd
 hdiutil detach ${TB_VOL}
 
 # Load the kexts
-kextload /Library/Extensions/tap-notarized.kext
-kextload /Library/Extensions/tun-notarized.kext
+sudo kextload /Library/Extensions/tap-notarized.kext
+sudo kextload /Library/Extensions/tun-notarized.kext
 
 ls -la /dev/tap* /dev/tun*
