@@ -2,7 +2,6 @@
 # Install on osx
 if [ "$TRAVIS_OS_NAME" = "osx" ]
 then
-  pip3 install tox
   if [ ! -z $SCAPY_USE_PCAPDNET ]
   then
     brew update
@@ -10,7 +9,6 @@ then
   fi
 
   ./.travis/install_osxtuntap.sh || exit 1
-  exit 0
 fi
 
 # Install wireshark data
