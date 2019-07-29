@@ -5,10 +5,12 @@ then
   if [ ! -z $SCAPY_USE_PCAPDNET ]
   then
     brew update
-    brew install libdnet libpcap
+    brew install libdnet libpcap python@3
   fi
+  pip3 install tox
 
   ./.travis/install_osxtuntap.sh || exit 1
+  exit 0
 fi
 
 # Install wireshark data
