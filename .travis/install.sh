@@ -6,7 +6,7 @@ then
   brew update > /dev/null
 
   # Needed for 10.12
-  brew install --upgrade python
+  brew upgrade python
   pip3 install tox
 
   if [ ! -z $SCAPY_USE_PCAPDNET ]
