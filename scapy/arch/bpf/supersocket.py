@@ -366,7 +366,7 @@ class L3bpfSocket(L2bpfSocket):
             # device reports as a "loopback" device, but it does IP.
             frame = raw(pkt)
         else:
-            frame = raw(self.guessed_cls() / frame)
+            frame = raw(self.guessed_cls() / pkt)
 
         pkt.sent_time = time.time()
 
