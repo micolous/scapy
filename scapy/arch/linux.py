@@ -464,7 +464,8 @@ class L2Socket(SuperSocket):
                 "The monitor argument is ineffective on native linux sockets."
                 " Use set_iface_monitor instead."
             )
-        self.ins = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(type))  # noqa: E501
+        self.ins = socket.socket(
+            socket.AF_PACKET, socket.SOCK_RAW, socket.htons(type))
         if not nofilter:
             if conf.except_filter:
                 if filter:

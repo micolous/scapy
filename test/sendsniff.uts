@@ -105,6 +105,10 @@ tun0, tun1 = [TunTapInterface("tun%d" % i) for i in range(2)]
 if LINUX:
     for i in range(2):
         assert subprocess.check_call(["ip", "link", "set", "tun%d" % i, "up"]) == 0
+    assert subprocess.check_call([
+        "ip", "addr", "change",
+        "192.0.2.1", "peer", "192.0.2.2", "dev", "tun0"]) == 0
+
 else:
     for i in range(2):
         assert subprocess.check_call(["ifconfig", "tun%d" % i, "up"]) == 0
