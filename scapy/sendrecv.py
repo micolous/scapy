@@ -1036,11 +1036,11 @@ Arguments:
                 return
             else:
                 if newpkt is True:
-                    newpkt = pkt.original
+                    newpkt = pkt
                 elif not newpkt:
                     return
         else:
-            newpkt = pkt.original
+            newpkt = pkt
         try:
             sendsock.send(newpkt)
         except Exception:

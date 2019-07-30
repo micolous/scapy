@@ -43,9 +43,8 @@ macOS
     `notarised`__, but this works because it was built before 2019-04-07.
 
     On macOS 10.15 and later, you need to use a `notarized build`__ of
-    ``tuntaposx``, which is no longer maintained. `Tunnelblick`__ (OpenVPN
-    client) contains a notarized build of ``tuntaposx`` `which can be
-    extracted`__.
+    ``tuntaposx``. `Tunnelblick`__ (OpenVPN client) contains a notarized build
+    of ``tuntaposx`` `which can be extracted`__.
 
     .. note::
 
@@ -135,14 +134,13 @@ You should see those packets show up in Scapy:
     Replying 192.0.2.1 to 192.0.2.2
     Replying 192.0.2.1 to 192.0.2.2
 
-You might have noticed that didn't configured any IP address inside of Scapy
-itself... and there's a little trick to this:
-
-:py:class:`ICMPEcho_am` will automatically swap the ``source`` and
+You might have noticed that didn't configure Scapy with any IP address... and
+there's a trick to this: :py:class:`ICMPEcho_am` swaps the ``source`` and
 ``destination`` fields of any :py:class:`Ether` and :py:class:`IP` headers on
-the :py:class:`ICMP` packet.
+the :py:class:`ICMP` packet that it receives. As a result, it actually responds
+to *any* IP address.
 
-You can stop the AnsweringMachine with :kbd:`^C`.
+You can stop the :py:class:`ICMPEcho_am` AnsweringMachine with :kbd:`^C`.
 
 When you close Scapy, the ``tun0`` interface will automatically disappear.
 
