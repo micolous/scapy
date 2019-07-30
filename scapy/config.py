@@ -631,7 +631,7 @@ recv_poll_rate: how often to check for new packets. Defaults to 0.05s.
                    'llmnr', 'lltd', 'mgcp', 'mobileip', 'netbios',
                    'netflow', 'ntp', 'ppi', 'ppp', 'pptp', 'radius', 'rip',
                    'rtp', 'sctp', 'sixlowpan', 'skinny', 'smb', 'snmp',
-                   'tftp', 'vrrp', 'vxlan', 'x509', 'zigbee']
+                   'tftp', 'tuntap', 'vrrp', 'vxlan', 'x509', 'zigbee']
     contribs = dict()
     crypto_valid = isCryptographyValid()
     crypto_valid_recent = isCryptographyRecent()

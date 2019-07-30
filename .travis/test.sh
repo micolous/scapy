@@ -15,7 +15,8 @@ then
   fi
 elif [ "$TRAVIS_OS_NAME" = "osx" ]
 then
-  UT_FLAGS=" -K tcpdump"
+  # Travis CI in macOS 10.13+ can't load kexts. Need this for tuntaposx.
+  UT_FLAGS=" -K tun -K tap"
 fi
 
 if [[ $TOXENV == py3* ]]
