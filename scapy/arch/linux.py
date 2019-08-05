@@ -605,6 +605,7 @@ class L3PacketSocket(L2Socket):
         try:
             self.outs.sendto(sx, sdto)
         except socket.error as msg:
+            raise
             if msg.errno == 22 and len(sx) < conf.min_pkt_size:
                 self.outs.send(sx + b"\x00" * (conf.min_pkt_size - len(sx)))
             elif conf.auto_fragment and msg.errno == 90:
