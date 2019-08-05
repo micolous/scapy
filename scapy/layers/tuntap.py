@@ -127,14 +127,14 @@ class TunTapInterface(SimpleSocket):
 
         self.mtu_overhead = 0
 
-        self.kernel_packet_class = self.inner_packet_class = (
-            IP if self.mode_tun else Ether)
+        self.kernel_packet_class = IP if self.mode_tun else Ether
 
         if LINUX:
             devname = b"/dev/net/tun"
             if self.mode_tun:
-                self.mtu_overhead = 4  # len(LinuxTunPacketInfo)
-                self.kernel_packet_class = LinuxTunPacketInfo
+                if not self.strip_packet_info:
+                    self.mtu_overhead = 4  # len(LinuxTunPacketInfo)
+                    self.kernel_packet_class = LinuxTunPacketInfo
             else:
                 if not self.strip_packet_info:
                     warning("tap devices on Linux never include packet info!")
@@ -161,11 +161,16 @@ class TunTapInterface(SimpleSocket):
         sock = open(devname, "r+b", buffering=0)
 
         if LINUX:
+            if self.mode_tun:
+                flags = LINUX_IFF_TUN
+                if self.strip_packet_info:
+                    flags |= LINUX_IFF_NO_PI
+            else:
+                flags = LINUX_IFF_TAP
+
             tsetiff = raw(LinuxTunIfReq(
                 ifrn_name=bytes_encode(self.iface),
-                ifru_flags=(LINUX_IFF_TUN if self.mode_tun else
-                            (LINUX_IFF_TAP | LINUX_IFF_NO_PI))
-            ))
+                ifru_flags=flags))
 
             ioctl(sock, LINUX_TUNSETIFF, tsetiff)
 
@@ -185,13 +190,7 @@ conf.L2listen, conf.L2socket or conf.L3socket.
             x = self.default_read_size
 
         x += self.mtu_overhead
-        data = self.ins.read(x)
-        cls = self.kernel_packet_class
-        if self.strip_packet_info and self.mtu_overhead:
-            data = data[self.mtu_overhead:]
-            cls = self.inner_packet_class
-
-        return cls, data, time.time()
+        return self.kernel_packet_class, self.ins.read(x), time.time()
 
     def send(self, x):
         if hasattr(x, "sent_time"):
