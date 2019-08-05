@@ -591,12 +591,17 @@ class L3PacketSocket(L2Socket):
         sdto = (iff, self.type)
         self.outs.bind(sdto)
         sn = self.outs.getsockname()
-        ll = lambda x: x
         if type(x) in conf.l3types:
             sdto = (iff, conf.l3types[type(x)])
+
+        print("sdto = %r" % (sdto,))
+        print("sn = %r" % (sn,))
+        print("x = %r" % (x,))
         if sn[3] in conf.l2types:
-            ll = lambda x: conf.l2types[sn[3]]() / x
-        sx = raw(ll(x))
+            sx = raw(conf.l2types[sn[3]]() / x)
+        else:
+            sx = raw(x)
+
         try:
             self.outs.sendto(sx, sdto)
         except socket.error as msg:

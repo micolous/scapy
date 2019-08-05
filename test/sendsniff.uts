@@ -113,10 +113,6 @@ else:
         assert subprocess.check_call(["ifconfig", "tun%d" % i, "up"]) == 0
     assert subprocess.check_call(["ifconfig", "tun0", "192.0.2.1", "192.0.2.2"]) == 0
 
-print('waiting a bit...')
-import time
-time.sleep(10)
-
 = Run a sniff thread on the tun1 **interface**
 * It will terminate when 5 IP packets from 192.0.2.1 have been sniffed
 t_sniff = Thread(
