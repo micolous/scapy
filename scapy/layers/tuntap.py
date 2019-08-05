@@ -193,15 +193,6 @@ conf.L2listen, conf.L2socket or conf.L3socket.
 
         return cls, data, time.time()
 
-    def recv(self, x=None):
-        pkt = super(TunTapInterface, self).recv(x)
-
-        if self.strip_packet_info and isinstance(pkt, TunPacketInfo):
-            # Strip PacketInfo
-            pkt = pkt.payload
-
-        return pkt
-
     def send(self, x):
         if hasattr(x, "sent_time"):
             x.sent_time = time.time()
