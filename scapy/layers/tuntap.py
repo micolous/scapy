@@ -199,6 +199,9 @@ conf.L2listen, conf.L2socket or conf.L3socket.
         if hasattr(x, "sent_time"):
             x.sent_time = time.time()
 
+        print("tun kernel = %r" % (self.kernel_packet_class,))
+        print("tun x = %r" % (x,))
+
         if not isinstance(x, self.kernel_packet_class):
             x = self.kernel_packet_class() / x
 
