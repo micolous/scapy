@@ -127,7 +127,8 @@ class TunTapInterface(SimpleSocket):
 
         self.mtu_overhead = 0
 
-        self.kernel_packet_class = IP if self.mode_tun else Ether
+        self.kernel_packet_class = self.inner_packet_class = (
+            IP if self.mode_tun else Ether)
 
         if LINUX:
             devname = b"/dev/net/tun"
@@ -184,7 +185,13 @@ conf.L2listen, conf.L2socket or conf.L3socket.
             x = self.default_read_size
 
         x += self.mtu_overhead
-        return self.kernel_packet_class, self.ins.read(x), time.time()
+        data = self.ins.read(x)
+        cls = self.kernel_packet_class
+        if self.strip_packet_info and self.mtu_overhead:
+            data = data[self.mtu_overhead:]
+            cls = self.inner_packet_class
+
+        return cls, data, time.time()
 
     def recv(self, x=None):
         pkt = super(TunTapInterface, self).recv(x)
