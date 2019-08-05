@@ -133,12 +133,12 @@ class TunTapInterface(SimpleSocket):
             devname = b"/dev/net/tun"
             if self.mode_tun:
                 if not self.strip_packet_info:
-                    self.mtu_overhead = 4  # len(LinuxTunPacketInfo)
-                    self.kernel_packet_class = LinuxTunPacketInfo
+                    warning("tun devices on Linux never include packet info!")
+                    self.strip_packet_info = True
             else:
                 if not self.strip_packet_info:
-                    warning("tap devices on Linux never include packet info!")
-                    self.strip_packet_info = True
+                    self.mtu_overhead = 4  # len(LinuxTunPacketInfo)
+                    self.kernel_packet_class = LinuxTunPacketInfo
 
             if len(self.iface) > LINUX_IFNAMSIZ:
                 warning("Linux interface names are limited to %d bytes, "
@@ -163,10 +163,10 @@ class TunTapInterface(SimpleSocket):
         if LINUX:
             if self.mode_tun:
                 flags = LINUX_IFF_TUN
-                if self.strip_packet_info:
-                    flags |= LINUX_IFF_NO_PI
             else:
                 flags = LINUX_IFF_TAP
+                if self.strip_packet_info:
+                    flags |= LINUX_IFF_NO_PI
 
             tsetiff = raw(LinuxTunIfReq(
                 ifrn_name=bytes_encode(self.iface),
